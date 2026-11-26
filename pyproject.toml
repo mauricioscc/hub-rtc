@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hub-rtc"
+version = "0.0.1"
+description = "Hub interno que integra as calculadoras da Reforma Tributária da Receita Federal"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "httpx>=0.28",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "import-linter>=2.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["fumaca: precisa dos motores no ar (docker compose up)"]
+addopts = "-m 'not fumaca'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F/W: erros básicos · N: nomes (PEP 8) · B: armadilhas · C90: complexidade
+# SIM/RET: simplificação · UP: Python moderno · PL: boas práticas · I: imports
+select = ["E", "F", "W", "N", "B", "C90", "SIM", "RET", "UP", "PL", "I"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 6
+
+[tool.ruff.lint.pylint]
+max-args = 3
+
+[tool.mypy]
+strict = true
+mypy_path = "src"
+
+[tool.importlinter]
+root_package = "hub_rtc"
+
+[[tool.importlinter.contracts]]
+name = "Arquitetura limpa: dependências apontam para dentro"
+type = "layers"
+layers = [
+    "hub_rtc.composicao",
+    "hub_rtc.entrada | hub_rtc.adaptadores",
+    "hub_rtc.casos_de_uso",
+    "hub_rtc.portas",
+    "hub_rtc.dominio",
+]

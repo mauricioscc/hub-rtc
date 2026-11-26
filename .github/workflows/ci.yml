@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  qualidade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: Estilo e complexidade (ruff)
+        run: ruff check . && ruff format --check .
+      - name: Tipos (mypy --strict)
+        run: mypy src tests
+      - name: Arquitetura (import-linter)
+        run: lint-imports
+      - name: Testes de unidade
+        run: pytest
+
+  motores:
+    # Sobe os três motores oficiais e roda o teste de fumaça.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: cp .env.example .env
+      - run: docker compose up -d --build --wait --wait-timeout 300
+      - run: pip install -e ".[dev]"
+      - run: pytest -m fumaca
+      - if: failure()
+        run: docker compose logs

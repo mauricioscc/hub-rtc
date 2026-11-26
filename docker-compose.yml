@@ -1,0 +1,73 @@
+# Hub RTC - Fase 0: os três motores oficiais da Receita Federal.
+# Uso:  cp .env.example .env  &&  docker compose up -d --build
+name: hub-rtc
+
+services:
+  # Gera o banco oficial uma vez, copia para o volume e encerra.
+  banco:
+    build:
+      context: ./docker/banco
+      args:
+        VERSAO_REGIME_REGULAR: ${VERSAO_REGIME_REGULAR}
+    volumes:
+      - banco-oficial:/banco
+    restart: "no"
+
+  regime-regular:
+    build:
+      context: ./docker/regime-regular
+      args:
+        VERSAO_REGIME_REGULAR: ${VERSAO_REGIME_REGULAR}
+    depends_on:
+      banco:
+        condition: service_completed_successfully
+    volumes:
+      - banco-oficial:/app/calculadora/db:ro
+    ports:
+      - "${PORTA_REGIME_REGULAR}:8080"
+    mem_limit: 1g
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsL", "-o", "/dev/null", "http://localhost:8080/api/swagger-ui.html"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+  simples-nacional:
+    build:
+      context: ./docker/simples-nacional
+      args:
+        VERSAO_SIMPLES_NACIONAL: ${VERSAO_SIMPLES_NACIONAL}
+    depends_on:
+      banco:
+        condition: service_completed_successfully
+    volumes:
+      - banco-oficial:/app/calculadora/db:ro
+    ports:
+      - "${PORTA_SIMPLES_NACIONAL}:8082"
+    mem_limit: 768m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:8082/api/versao"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+  gerador-danfse:
+    # Dockerfile oficial da Receita, direto da tag no GitHub.
+    build:
+      context: https://github.com/ReceitaFederal/calculadora-rtc-gerador-danfse.git#${VERSAO_GERADOR_DANFSE}
+    ports:
+      - "${PORTA_GERADOR_DANFSE}:8080"
+    mem_limit: 128m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  banco-oficial:
