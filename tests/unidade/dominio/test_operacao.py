@@ -4,7 +4,13 @@ from decimal import Decimal
 import pytest
 
 from hub_rtc.dominio.erros import OperacaoInvalida
-from hub_rtc.dominio.operacao import AliquotasNominais, ItemOperacao, Operacao
+from hub_rtc.dominio.operacao import (
+    AliquotasNominais,
+    AliquotasSeletivo,
+    ImpostoSeletivoItem,
+    ItemOperacao,
+    Operacao,
+)
 
 
 def um_item(**alteracoes: object) -> ItemOperacao:
@@ -98,3 +104,55 @@ def test_operacao_guarda_as_aliquotas_nominais() -> None:
 
     assert operacao.aliquotas_nominais is aliquotas
     assert uma_operacao((um_item(),)).aliquotas_nominais is None
+
+
+def um_seletivo(**alteracoes: object) -> ImpostoSeletivoItem:
+    dados: dict[str, object] = {
+        "cst": "000",
+        "classificacao_tributaria": "000001",
+        "base_calculo": Decimal("188.00"),
+        "quantidade": Decimal(1),
+        "unidade": "UN",
+    }
+    return ImpostoSeletivoItem(**{**dados, **alteracoes})  # type: ignore[arg-type]
+
+
+def test_item_com_imposto_seletivo_pode_omitir_a_base_de_cbs_e_ibs() -> None:
+    item = um_item(base_calculo=None, imposto_seletivo=um_seletivo())
+
+    assert item.base_calculo is None
+
+
+def test_item_sem_imposto_seletivo_exige_base_de_calculo() -> None:
+    with pytest.raises(OperacaoInvalida, match="base de cálculo"):
+        um_item(base_calculo=None)
+
+
+@pytest.mark.parametrize(
+    ("alteracao", "trecho"),
+    [
+        ({"cst": "00"}, "CST do Imposto Seletivo"),
+        ({"classificacao_tributaria": "1"}, "classificação do Imposto Seletivo"),
+        ({"base_calculo": Decimal(-1)}, "base de cálculo do Imposto Seletivo"),
+        ({"quantidade": Decimal(-1)}, "quantidade"),
+    ],
+)
+def test_imposto_seletivo_do_item_e_validado(alteracao: dict[str, object], trecho: str) -> None:
+    with pytest.raises(OperacaoInvalida, match=trecho):
+        um_seletivo(**alteracao)
+
+
+def test_aliquotas_do_imposto_seletivo_sao_validadas() -> None:
+    assert AliquotasSeletivo(Decimal(10), Decimal("0.5")).ad_rem == Decimal("0.5")
+    with pytest.raises(OperacaoInvalida, match="ad valorem"):
+        AliquotasSeletivo(Decimal("100.1"), Decimal(0))
+    with pytest.raises(OperacaoInvalida, match="ad rem"):
+        AliquotasSeletivo(Decimal(0), Decimal(-1))
+
+
+def test_aliquotas_nominais_podem_trazer_as_do_imposto_seletivo() -> None:
+    seletivo = AliquotasSeletivo(Decimal(10), Decimal("0.5"))
+
+    aliquotas = AliquotasNominais(Decimal(1), Decimal(1), Decimal(1), imposto_seletivo=seletivo)
+
+    assert aliquotas.imposto_seletivo is seletivo

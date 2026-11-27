@@ -106,3 +106,43 @@ def test_hub_calcula_a_partir_de_2027_com_aliquotas_nominais() -> None:
     corpo = resposta.json()
     assert corpo["simulado"] is True
     assert corpo["totais"] == {"cbs": "8.80", "ibs": "17.70", "imposto_seletivo": "0"}
+
+
+def test_hub_calcula_o_imposto_seletivo_com_o_motor_real() -> None:
+    """188 x 10% + 0,50 x 1 unidade = 19,30; a base de CBS/IBS vira 188 + 19,30."""
+    pedido = {
+        "fato_gerador": "2027-01-05T12:00:00-03:00",
+        "municipio": 3304557,
+        "uf": "RJ",
+        "aliquotas_nominais": {
+            "cbs": "8.8",
+            "ibs_estadual": "8.85",
+            "ibs_municipal": "8.85",
+            "imposto_seletivo": {"ad_valorem": "10", "ad_rem": "0.5"},
+        },
+        "itens": [
+            {
+                "numero": 1,
+                "cst": "000",
+                "classificacao_tributaria": "000001",
+                "ncm": "24021000",
+                "imposto_seletivo": {
+                    "cst": "000",
+                    "classificacao_tributaria": "000001",
+                    "base_calculo": "188.00",
+                    "quantidade": "1",
+                    "unidade": "UN",
+                },
+            }
+        ],
+    }
+
+    resposta = httpx.post(
+        f"{ENDERECOS.hub}/api/calculos/regime-regular", json=pedido, timeout=TEMPO_LIMITE_SEGUNDOS
+    )
+
+    assert resposta.status_code == httpx.codes.OK, resposta.text
+    corpo = resposta.json()
+    assert corpo["totais"]["imposto_seletivo"] == "19.30"
+    assert corpo["itens"][0]["base_calculo"] == "207.30"
+    assert "Imposto Seletivo" in [m["tributos"] for m in corpo["itens"][0]["memorias"]]

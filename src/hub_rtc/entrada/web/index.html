@@ -25,6 +25,9 @@
   .item .larga { grid-column: 1 / -1; }
   .item .base-campo { grid-column: 1 / 3; }
   .item .cst-campo { grid-column: 2 / -1; padding-right:26px; }
+  .item .seletivo { grid-column: 1 / -1; }
+  .item .seletivo summary { cursor:pointer; font-size:.85rem; color:var(--suave); }
+  .item .seletivo .grade { margin-top:8px; }
   .item .remover { position:absolute; top:6px; right:6px; padding:0 8px; line-height:1.4; }
   button { padding:8px 14px; border-radius:6px; border:1px solid var(--borda); background:var(--card); color:var(--texto); font:inherit; cursor:pointer; }
   button.principal { background:var(--marca); border-color:var(--marca); color:var(--sobre-marca); font-weight:600; width:100%; padding:11px; }
@@ -83,6 +86,13 @@
           <div><label for="aliq-cbs">CBS</label><input id="aliq-cbs" inputmode="decimal" value="8.8"></div>
           <div><label for="aliq-ibs-uf">IBS estadual</label><input id="aliq-ibs-uf" inputmode="decimal" value="8.85"></div>
           <div><label for="aliq-ibs-mun">IBS municipal</label><input id="aliq-ibs-mun" inputmode="decimal" value="8.85"></div>
+        </div>
+        <div id="aliquotas-seletivo" hidden>
+          <p class="nota">Imposto Seletivo: ad valorem em % e ad rem por unidade (usadas só nos itens com Imposto Seletivo).</p>
+          <div class="grade">
+            <div><label for="aliq-is-valorem">IS ad valorem (%)</label><input id="aliq-is-valorem" inputmode="decimal" value="10"></div>
+            <div><label for="aliq-is-rem">IS ad rem</label><input id="aliq-is-rem" inputmode="decimal" value="0.5"></div>
+          </div>
         </div>
       </section>
 
@@ -144,6 +154,7 @@ const EXEMPLOS = [
   { nome: "Obras e bens imóveis (redução de 50%)", itens: [["200", "200046", "50000.00"]] },
   { nome: "Oficina / reparo automotivo (sem redução)", itens: [["000", "000001", "800.00"], ["000", "000001", "350.00"]] },
   { nome: "Operação em 2027 (alíquotas nominais)", data: "2027-01-05", itens: [["000", "000001", "100.00"]] },
+  { nome: "Imposto Seletivo (2027)", data: "2027-01-05", itens: [["000", "000001", "", { base: "188.00", quantidade: "1", unidade: "UN" }]] },
   { nome: "Vários itens", itens: [["000", "000001", "250.55"], ["200", "200032", "80.00"], ["400", "400001", "40.00"]] },
 ];
 
@@ -181,18 +192,31 @@ async function carregarCatalogo() {
 }
 
 // ---------- itens ----------
-function novoItem({ cst = "", classificacao = "", base = "" } = {}) {
+function novoItem({ cst = "", classificacao = "", base = "", seletivo = null } = {}) {
   const numero = el("input", { className: "numero", inputMode: "numeric", required: true, value: $("itens").children.length + 1 });
   const selCst = el("select", { className: "cst", required: true });
   const selClass = el("select", { className: "classificacao", required: true });
-  const campoBase = el("input", { className: "base", inputMode: "decimal", placeholder: "100.00", required: true, value: base });
+  const campoBase = el("input", { className: "base", inputMode: "decimal", placeholder: "100.00", value: base });
   const ncm = el("input", { className: "ncm", maxLength: 8 });
   const remover = el("button", { type: "button", className: "remover", title: "Remover item", textContent: "×" });
   const campo = (rotulo, controle, classe = "") => el("div", { className: classe }, el("label", { textContent: rotulo }), controle);
+  const campoIs = (classe, rotulo, valor, extra = {}) => campo(rotulo, el("input", { className: classe, value: valor, ...extra }));
+  const blocoIs = el("details", { className: "seletivo", open: Boolean(seletivo) },
+    el("summary", { textContent: "Imposto Seletivo (opcional)" }),
+    el("div", { className: "grade" },
+      campoIs("is-cst", "CST do IS", "000", { maxLength: 3 }),
+      campoIs("is-class", "Classificação do IS", "000001", { maxLength: 6 }),
+      campoIs("is-base", "Base do IS (R$)", seletivo?.base ?? "", { inputMode: "decimal" }),
+      campoIs("is-qtd", "Quantidade", seletivo?.quantidade ?? "", { inputMode: "decimal" }),
+      campoIs("is-un", "Unidade", seletivo?.unidade ?? "")),
+    el("p", { className: "nota", textContent: "Com Imposto Seletivo, a base de CBS e IBS é calculada pelo motor (base do IS + imposto)." }));
   const item = el("div", { className: "item" },
     campo("Nº", numero), campo("Situação tributária (CST)", selCst, "cst-campo"),
     campo("Classificação tributária", selClass, "larga"),
-    campo("Base de cálculo (R$)", campoBase, "base-campo"), campo("NCM (opcional)", ncm), remover);
+    campo("Base de cálculo (R$)", campoBase, "base-campo"), campo("NCM (opcional)", ncm), blocoIs, remover);
+  const exigirBase = () => { campoBase.required = !usaSeletivo(item); atualizarAliquotas(); };
+  blocoIs.oninput = exigirBase;
+  exigirBase();
   selCst.onchange = () => preencherClassificacoes(item, "");
   remover.onclick = () => { if ($("itens").children.length > 1) item.remove(); };
   $("itens").append(item);
@@ -204,7 +228,8 @@ async function aplicarExemplo(exemplo) {
   atualizarAliquotas();
   await carregarCatalogo();
   $("itens").replaceChildren();
-  for (const [cst, classificacao, base] of exemplo.itens) novoItem({ cst, classificacao, base });
+  for (const [cst, classificacao, base, seletivo] of exemplo.itens) novoItem({ cst, classificacao, base, seletivo });
+  atualizarAliquotas();
   $("erro").textContent = "";
 }
 
@@ -215,8 +240,10 @@ function montarPedido() {
       numero: Number(l.querySelector(".numero").value),
       cst: l.querySelector(".cst").value,
       classificacao_tributaria: l.querySelector(".classificacao").value,
-      base_calculo: l.querySelector(".base").value.trim().replace(",", "."),
     };
+    const base = l.querySelector(".base").value.trim().replace(",", ".");
+    if (base && !usaSeletivo(l)) item.base_calculo = base;
+    if (usaSeletivo(l)) item.imposto_seletivo = lerSeletivo(l);
     const ncm = l.querySelector(".ncm").value.trim();
     if (ncm) item.ncm = ncm;
     return item;
@@ -230,13 +257,26 @@ function montarPedido() {
   if (exigeAliquotas()) {
     const lerAliquota = (id) => $(id).value.trim().replace(",", ".");
     pedido.aliquotas_nominais = { cbs: lerAliquota("aliq-cbs"), ibs_estadual: lerAliquota("aliq-ibs-uf"), ibs_municipal: lerAliquota("aliq-ibs-mun") };
+    if (algumItemComSeletivo()) pedido.aliquotas_nominais.imposto_seletivo = { ad_valorem: lerAliquota("aliq-is-valorem"), ad_rem: lerAliquota("aliq-is-rem") };
   }
   return pedido;
 }
 
 const hojeLocal = () => new Date().toLocaleDateString("sv-SE");
 const exigeAliquotas = () => $("data").value >= "2027-01-01";
-function atualizarAliquotas() { $("aliquotas").hidden = !exigeAliquotas(); }
+const usaSeletivo = (item) => item.querySelector(".is-base").value.trim() !== "";
+const algumItemComSeletivo = () => [...$("itens").children].some(usaSeletivo);
+function atualizarAliquotas() {
+  $("aliquotas").hidden = !exigeAliquotas();
+  $("aliquotas-seletivo").hidden = !algumItemComSeletivo();
+}
+function lerSeletivo(item) {
+  const valor = (classe) => item.querySelector(classe).value.trim().replace(",", ".");
+  const seletivo = { cst: valor(".is-cst"), classificacao_tributaria: valor(".is-class"), base_calculo: valor(".is-base") };
+  if (valor(".is-qtd")) seletivo.quantidade = valor(".is-qtd");
+  if (valor(".is-un")) seletivo.unidade = valor(".is-un");
+  return seletivo;
+}
 
 const dinheiro = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

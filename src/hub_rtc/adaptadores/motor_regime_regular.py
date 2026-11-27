@@ -10,7 +10,12 @@ import httpx
 
 from hub_rtc.dominio.catalogo import ClassificacaoTributaria, SituacaoTributaria
 from hub_rtc.dominio.erros import MotorIndisponivel, MotorRejeitouOperacao
-from hub_rtc.dominio.operacao import AliquotasNominais, ItemOperacao, Operacao
+from hub_rtc.dominio.operacao import (
+    AliquotasNominais,
+    ImpostoSeletivoItem,
+    ItemOperacao,
+    Operacao,
+)
 from hub_rtc.dominio.resultado import MemoriaDeCalculo, ResultadoCalculo, TributosDoItem
 
 CAMINHO_CALCULO = "/api/calculadora/regime-geral"
@@ -29,12 +34,31 @@ TRIBUTOS_COM_MEMORIA = (
 )
 
 
-def _aliquotas_para_json(aliquotas: AliquotasNominais) -> dict[str, float]:
-    return {
+def _aliquotas_para_json(aliquotas: AliquotasNominais) -> dict[str, Any]:
+    json_aliquotas: dict[str, Any] = {
         "cbs": float(aliquotas.cbs),
         "ibsEstadual": float(aliquotas.ibs_estadual),
         "ibsMunicipal": float(aliquotas.ibs_municipal),
     }
+    if aliquotas.imposto_seletivo is not None:
+        json_aliquotas["impostoSeletivo"] = {
+            "adValorem": float(aliquotas.imposto_seletivo.ad_valorem),
+            "adRem": float(aliquotas.imposto_seletivo.ad_rem),
+        }
+    return json_aliquotas
+
+
+def _seletivo_para_json(seletivo: ImpostoSeletivoItem) -> dict[str, Any]:
+    json_seletivo: dict[str, Any] = {
+        "cst": seletivo.cst,
+        "cClassTrib": seletivo.classificacao_tributaria,
+        "baseCalculo": float(seletivo.base_calculo),
+    }
+    if seletivo.quantidade is not None:
+        json_seletivo["quantidade"] = float(seletivo.quantidade)
+    if seletivo.unidade:
+        json_seletivo["unidade"] = seletivo.unidade
+    return json_seletivo
 
 
 def _item_para_json(item: ItemOperacao) -> dict[str, Any]:
@@ -42,10 +66,13 @@ def _item_para_json(item: ItemOperacao) -> dict[str, Any]:
         "numero": item.numero,
         "cst": item.cst,
         "cClassTrib": item.classificacao_tributaria,
-        "baseCalculo": float(item.base_calculo),
     }
+    if item.base_calculo is not None:
+        json_item["baseCalculo"] = float(item.base_calculo)
     if item.ncm:
         json_item["ncm"] = item.ncm
+    if item.imposto_seletivo is not None:
+        json_item["impostoSeletivo"] = _seletivo_para_json(item.imposto_seletivo)
     return json_item
 
 

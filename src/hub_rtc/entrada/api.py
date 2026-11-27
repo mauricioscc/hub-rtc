@@ -13,7 +13,13 @@ from pydantic import BaseModel
 
 from hub_rtc.dominio.catalogo import SituacaoTributaria
 from hub_rtc.dominio.erros import ErroDoHub, MotorIndisponivel
-from hub_rtc.dominio.operacao import AliquotasNominais, ItemOperacao, Operacao
+from hub_rtc.dominio.operacao import (
+    AliquotasNominais,
+    AliquotasSeletivo,
+    ImpostoSeletivoItem,
+    ItemOperacao,
+    Operacao,
+)
 from hub_rtc.dominio.resultado import ResultadoCalculo
 
 DIRETORIO_WEB = Path(__file__).parent / "web"
@@ -29,18 +35,53 @@ class ConsultaSituacoes(Protocol):
     def executar(self, data: date) -> tuple[SituacaoTributaria, ...]: ...
 
 
+class ImpostoSeletivoPedido(BaseModel):
+    cst: str
+    classificacao_tributaria: str
+    base_calculo: Decimal
+    quantidade: Decimal | None = None
+    unidade: str | None = None
+
+
 class ItemPedido(BaseModel):
     numero: int
     cst: str
     classificacao_tributaria: str
-    base_calculo: Decimal
+    base_calculo: Decimal | None = None
     ncm: str | None = None
+    imposto_seletivo: ImpostoSeletivoPedido | None = None
+
+    def para_dominio(self) -> ItemOperacao:
+        seletivo = self.imposto_seletivo
+        return ItemOperacao(
+            numero=self.numero,
+            cst=self.cst,
+            classificacao_tributaria=self.classificacao_tributaria,
+            base_calculo=self.base_calculo,
+            ncm=self.ncm,
+            imposto_seletivo=ImpostoSeletivoItem(**seletivo.model_dump()) if seletivo else None,
+        )
+
+
+class AliquotasSeletivoPedido(BaseModel):
+    ad_valorem: Decimal
+    ad_rem: Decimal
 
 
 class AliquotasNominaisPedido(BaseModel):
     cbs: Decimal
     ibs_estadual: Decimal
     ibs_municipal: Decimal
+    imposto_seletivo: AliquotasSeletivoPedido | None = None
+
+    def para_dominio(self) -> AliquotasNominais:
+        seletivo = self.imposto_seletivo
+        return AliquotasNominais(
+            cbs=self.cbs,
+            ibs_estadual=self.ibs_estadual,
+            ibs_municipal=self.ibs_municipal,
+            imposto_seletivo=AliquotasSeletivo(**seletivo.model_dump()) if seletivo else None,
+        )
 
 
 class PedidoCalculo(BaseModel):
@@ -52,17 +93,14 @@ class PedidoCalculo(BaseModel):
     itens: list[ItemPedido]
 
     def para_dominio(self) -> Operacao:
+        aliquotas = self.aliquotas_nominais
         return Operacao(
             fato_gerador=self.fato_gerador,
             municipio=self.municipio,
             uf=self.uf,
             tipo_documento=self.tipo_documento,
-            aliquotas_nominais=(
-                AliquotasNominais(**self.aliquotas_nominais.model_dump())
-                if self.aliquotas_nominais
-                else None
-            ),
-            itens=tuple(ItemOperacao(**item.model_dump()) for item in self.itens),
+            aliquotas_nominais=aliquotas.para_dominio() if aliquotas else None,
+            itens=tuple(item.para_dominio() for item in self.itens),
         )
 
 

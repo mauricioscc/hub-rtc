@@ -177,3 +177,55 @@ def test_pedido_sem_aliquotas_nominais_nao_e_simulado() -> None:
     resposta = cliente(CasoDeUsoFalso()).post("/api/calculos/regime-regular", json=PEDIDO)
 
     assert resposta.json()["simulado"] is False
+
+
+def test_pedido_com_imposto_seletivo_chega_ao_dominio_sem_a_base_de_cbs_e_ibs() -> None:
+    caso_de_uso = CasoDeUsoFalso()
+    item = {
+        "numero": 1,
+        "cst": "000",
+        "classificacao_tributaria": "000001",
+        "imposto_seletivo": {
+            "cst": "000",
+            "classificacao_tributaria": "000001",
+            "base_calculo": "188.00",
+            "quantidade": "2",
+            "unidade": "LT",
+        },
+    }
+    pedido = {
+        **PEDIDO,
+        "fato_gerador": "2027-01-05T10:00:00-03:00",
+        "aliquotas_nominais": {
+            "cbs": "8.8",
+            "ibs_estadual": "8.85",
+            "ibs_municipal": "8.85",
+            "imposto_seletivo": {"ad_valorem": "10", "ad_rem": "0.5"},
+        },
+        "itens": [item],
+    }
+
+    resposta = cliente(caso_de_uso).post("/api/calculos/regime-regular", json=pedido)
+
+    assert resposta.status_code == 200
+    assert caso_de_uso.recebida is not None
+    recebido = caso_de_uso.recebida.itens[0]
+    assert recebido.base_calculo is None
+    assert recebido.imposto_seletivo is not None
+    assert recebido.imposto_seletivo.base_calculo == Decimal("188.00")
+    assert recebido.imposto_seletivo.unidade == "LT"
+    aliquotas = caso_de_uso.recebida.aliquotas_nominais
+    assert aliquotas is not None
+    assert aliquotas.imposto_seletivo is not None
+    assert aliquotas.imposto_seletivo.ad_rem == Decimal("0.5")
+
+
+def test_item_sem_seletivo_e_sem_base_vira_422() -> None:
+    item = {"numero": 1, "cst": "000", "classificacao_tributaria": "000001"}
+
+    resposta = cliente(CasoDeUsoFalso()).post(
+        "/api/calculos/regime-regular", json={**PEDIDO, "itens": [item]}
+    )
+
+    assert resposta.status_code == 422
+    assert "base de cálculo" in resposta.json()["erro"]

@@ -8,7 +8,7 @@ import pytest
 
 from hub_rtc.adaptadores.motor_regime_regular import MotorRegimeRegular
 from hub_rtc.dominio.erros import MotorIndisponivel, MotorRejeitouOperacao
-from hub_rtc.dominio.operacao import AliquotasNominais
+from hub_rtc.dominio.operacao import AliquotasNominais, AliquotasSeletivo, ImpostoSeletivoItem
 from tests.unidade.dominio.test_operacao import um_item, uma_operacao
 
 RESPOSTA_DO_MOTOR = {
@@ -247,3 +247,49 @@ def test_resultado_indica_quando_o_calculo_foi_simulado() -> None:
 
     assert motor_respondendo(200, simulado).calcular(uma_operacao((um_item(),))).simulado
     assert not motor_respondendo(200, normal).calcular(uma_operacao((um_item(),))).simulado
+
+
+def test_envia_o_imposto_seletivo_do_item_sem_a_base_de_cbs_e_ibs() -> None:
+    capturadas: list[httpx.Request] = []
+    motor = motor_respondendo(200, RESPOSTA_DO_MOTOR, capturadas)
+    seletivo = ImpostoSeletivoItem("000", "000001", Decimal("188"), Decimal(2), "LT")
+
+    motor.calcular(uma_operacao((um_item(base_calculo=None, imposto_seletivo=seletivo),)))
+
+    item = json.loads(capturadas[0].content)["itens"][0]
+    assert "baseCalculo" not in item
+    assert item["impostoSeletivo"] == {
+        "cst": "000",
+        "cClassTrib": "000001",
+        "baseCalculo": 188.0,
+        "quantidade": 2.0,
+        "unidade": "LT",
+    }
+
+
+def test_imposto_seletivo_sem_quantidade_nem_unidade_omite_os_campos() -> None:
+    capturadas: list[httpx.Request] = []
+    motor = motor_respondendo(200, RESPOSTA_DO_MOTOR, capturadas)
+    seletivo = ImpostoSeletivoItem("000", "000001", Decimal("188"))
+
+    motor.calcular(uma_operacao((um_item(imposto_seletivo=seletivo),)))
+
+    enviado = json.loads(capturadas[0].content)["itens"][0]["impostoSeletivo"]
+    assert "quantidade" not in enviado
+    assert "unidade" not in enviado
+
+
+def test_envia_as_aliquotas_nominais_do_imposto_seletivo() -> None:
+    capturadas: list[httpx.Request] = []
+    motor = motor_respondendo(200, RESPOSTA_DO_MOTOR, capturadas)
+    aliquotas = AliquotasNominais(
+        Decimal("8.8"),
+        Decimal("8.85"),
+        Decimal("8.85"),
+        imposto_seletivo=AliquotasSeletivo(Decimal(10), Decimal("0.5")),
+    )
+
+    motor.calcular(replace(uma_operacao((um_item(),)), aliquotas_nominais=aliquotas))
+
+    enviado = json.loads(capturadas[0].content)["itens"][0]["aliquotasNominais"]
+    assert enviado["impostoSeletivo"] == {"adValorem": 10.0, "adRem": 0.5}
