@@ -80,3 +80,29 @@ def test_hub_lista_situacoes_tributarias_com_classificacoes() -> None:
     assert resposta.status_code == httpx.codes.OK
     integral = next(s for s in resposta.json() if s["codigo"] == "000")
     assert "000001" in [c["codigo"] for c in integral["classificacoes"]]
+
+
+def test_hub_calcula_a_partir_de_2027_com_aliquotas_nominais() -> None:
+    pedido = {
+        "fato_gerador": "2027-01-05T12:00:00-03:00",
+        "municipio": 3304557,
+        "uf": "RJ",
+        "aliquotas_nominais": {"cbs": "8.8", "ibs_estadual": "8.85", "ibs_municipal": "8.85"},
+        "itens": [
+            {
+                "numero": 1,
+                "cst": "000",
+                "classificacao_tributaria": "000001",
+                "base_calculo": "100.00",
+            }
+        ],
+    }
+
+    resposta = httpx.post(
+        f"{ENDERECOS.hub}/api/calculos/regime-regular", json=pedido, timeout=TEMPO_LIMITE_SEGUNDOS
+    )
+
+    assert resposta.status_code == httpx.codes.OK, resposta.text
+    corpo = resposta.json()
+    assert corpo["simulado"] is True
+    assert corpo["totais"] == {"cbs": "8.80", "ibs": "17.70", "imposto_seletivo": "0"}

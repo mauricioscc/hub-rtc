@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -7,6 +8,7 @@ import pytest
 
 from hub_rtc.adaptadores.motor_regime_regular import MotorRegimeRegular
 from hub_rtc.dominio.erros import MotorIndisponivel, MotorRejeitouOperacao
+from hub_rtc.dominio.operacao import AliquotasNominais
 from tests.unidade.dominio.test_operacao import um_item, uma_operacao
 
 RESPOSTA_DO_MOTOR = {
@@ -213,3 +215,35 @@ def test_consulta_situacoes_tributarias_na_data_informada() -> None:
 def test_consulta_de_situacoes_tambem_traduz_motor_fora_do_ar() -> None:
     with pytest.raises(MotorIndisponivel):
         motor_respondendo(503, {}).situacoes_tributarias(date(2026, 10, 20))
+
+
+def test_envia_as_aliquotas_nominais_em_cada_item() -> None:
+    capturadas: list[httpx.Request] = []
+    motor = motor_respondendo(200, RESPOSTA_DO_MOTOR, capturadas)
+    operacao = replace(
+        uma_operacao((um_item(numero=1), um_item(numero=2))),
+        aliquotas_nominais=AliquotasNominais(Decimal("8.8"), Decimal("8.85"), Decimal("8.85")),
+    )
+
+    motor.calcular(operacao)
+
+    itens = json.loads(capturadas[0].content)["itens"]
+    esperado = {"cbs": 8.8, "ibsEstadual": 8.85, "ibsMunicipal": 8.85}
+    assert [item["aliquotasNominais"] for item in itens] == [esperado, esperado]
+
+
+def test_sem_aliquotas_nominais_o_campo_nao_vai_no_pedido() -> None:
+    capturadas: list[httpx.Request] = []
+    motor = motor_respondendo(200, RESPOSTA_DO_MOTOR, capturadas)
+
+    motor.calcular(uma_operacao((um_item(),)))
+
+    assert "aliquotasNominais" not in json.loads(capturadas[0].content)["itens"][0]
+
+
+def test_resultado_indica_quando_o_calculo_foi_simulado() -> None:
+    simulado = {"objetos": [{"nObj": 1, "calculoSimulado": True, "tribCalc": {}}]}
+    normal = {"objetos": [{"nObj": 1, "calculoSimulado": False, "tribCalc": {}}]}
+
+    assert motor_respondendo(200, simulado).calcular(uma_operacao((um_item(),))).simulado
+    assert not motor_respondendo(200, normal).calcular(uma_operacao((um_item(),))).simulado

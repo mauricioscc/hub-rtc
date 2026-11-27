@@ -44,6 +44,8 @@
   .memoria { margin:8px 0 0; font-size:.88rem; }
   .memoria b { color:var(--marca); }
   .vazio { color:var(--suave); text-align:center; padding:32px 8px; }
+  .nota { color:var(--suave); font-size:.85rem; margin:0 0 10px; }
+  #nota-simulado { background:var(--marca-fraca); border-radius:6px; padding:8px 10px; font-size:.85rem; margin:0 0 10px; }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -74,6 +76,16 @@
         </div>
       </section>
 
+      <section id="aliquotas" hidden>
+        <h2>Alíquotas nominais (%)</h2>
+        <p class="nota">A partir de 01/01/2027 o motor exige as alíquotas, e o cálculo é uma simulação com os valores informados. Os valores abaixo são o exemplo do próprio motor.</p>
+        <div class="grade">
+          <div><label for="aliq-cbs">CBS</label><input id="aliq-cbs" inputmode="decimal" value="8.8"></div>
+          <div><label for="aliq-ibs-uf">IBS estadual</label><input id="aliq-ibs-uf" inputmode="decimal" value="8.85"></div>
+          <div><label for="aliq-ibs-mun">IBS municipal</label><input id="aliq-ibs-mun" inputmode="decimal" value="8.85"></div>
+        </div>
+      </section>
+
       <section>
         <h2>Itens</h2>
         <p id="aviso-catalogo" hidden></p>
@@ -90,6 +102,7 @@
         <h2>Resultado</h2>
         <div id="vazio" class="vazio">Preencha a operação, ou escolha um exemplo, e clique em Calcular.</div>
         <div id="resultado" hidden>
+          <p id="nota-simulado" hidden>Cálculo <b>simulado</b> com as alíquotas nominais informadas por você, não com as alíquotas oficiais.</p>
           <div class="tabela">
             <table>
               <thead><tr><th>Item</th><th>Base</th><th>CBS</th><th>IBS</th><th>IS</th></tr></thead>
@@ -130,6 +143,7 @@ const EXEMPLOS = [
   { nome: "Imunidade", itens: [["410", "410001", "100.00"]] },
   { nome: "Obras e bens imóveis (redução de 50%)", itens: [["200", "200046", "50000.00"]] },
   { nome: "Oficina / reparo automotivo (sem redução)", itens: [["000", "000001", "800.00"], ["000", "000001", "350.00"]] },
+  { nome: "Operação em 2027 (alíquotas nominais)", data: "2027-01-05", itens: [["000", "000001", "100.00"]] },
   { nome: "Vários itens", itens: [["000", "000001", "250.55"], ["200", "200032", "80.00"], ["400", "400001", "40.00"]] },
 ];
 
@@ -185,7 +199,10 @@ function novoItem({ cst = "", classificacao = "", base = "" } = {}) {
   preencherItem(item, cst, classificacao);
 }
 
-function aplicarExemplo(exemplo) {
+async function aplicarExemplo(exemplo) {
+  $("data").value = exemplo.data ?? hojeLocal();
+  atualizarAliquotas();
+  await carregarCatalogo();
   $("itens").replaceChildren();
   for (const [cst, classificacao, base] of exemplo.itens) novoItem({ cst, classificacao, base });
   $("erro").textContent = "";
@@ -204,13 +221,22 @@ function montarPedido() {
     if (ncm) item.ncm = ncm;
     return item;
   });
-  return {
+  const pedido = {
     fato_gerador: `${$("data").value}T12:00:00-03:00`,
     uf: $("uf").value.trim().toUpperCase(),
     municipio: Number(String($("municipio").value).trim()),
     itens,
   };
+  if (exigeAliquotas()) {
+    const lerAliquota = (id) => $(id).value.trim().replace(",", ".");
+    pedido.aliquotas_nominais = { cbs: lerAliquota("aliq-cbs"), ibs_estadual: lerAliquota("aliq-ibs-uf"), ibs_municipal: lerAliquota("aliq-ibs-mun") };
+  }
+  return pedido;
 }
+
+const hojeLocal = () => new Date().toLocaleDateString("sv-SE");
+const exigeAliquotas = () => $("data").value >= "2027-01-01";
+function atualizarAliquotas() { $("aliquotas").hidden = !exigeAliquotas(); }
 
 const dinheiro = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -232,6 +258,7 @@ function mostrarResultado(corpo) {
   $("memorias").replaceChildren(...corpo.itens.filter((i) => i.memorias.length).map((i) =>
     el("details", {}, el("summary", { textContent: `Memória de cálculo · item ${i.numero}` }),
       ...i.memorias.map((m) => el("p", { className: "memoria" }, el("b", { textContent: `${m.tributos}: ` }), m.texto)))));
+  $("nota-simulado").hidden = !corpo.simulado;
   $("vazio").hidden = true;
   $("resultado").hidden = false;
 }
@@ -271,8 +298,8 @@ for (const exemplo of EXEMPLOS) {
   $("exemplos").append(el("button", { type: "button", textContent: exemplo.nome, onclick: () => aplicarExemplo(exemplo) }));
 }
 $("novo-item").onclick = () => novoItem();
-$("data").value = new Date().toLocaleDateString("sv-SE");
-$("data").onchange = carregarCatalogo;
+$("data").value = hojeLocal();
+$("data").onchange = () => { atualizarAliquotas(); carregarCatalogo(); };
 if (noPages) {
   $("servidor").hidden = false;
   $("api").value = new URLSearchParams(location.search).get("api") || lembrar("api") || HUB_PADRAO;

@@ -34,6 +34,8 @@ class TributosDoItem:
 @dataclass(frozen=True)
 class ResultadoCalculo:
     itens: tuple[TributosDoItem, ...]
+    # True quando o motor calculou com as alíquotas informadas pelo usuário.
+    simulado: bool = False
 
     @property
     def total_cbs(self) -> Decimal:

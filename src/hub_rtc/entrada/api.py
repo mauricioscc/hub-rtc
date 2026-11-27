@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from hub_rtc.dominio.catalogo import SituacaoTributaria
 from hub_rtc.dominio.erros import ErroDoHub, MotorIndisponivel
-from hub_rtc.dominio.operacao import ItemOperacao, Operacao
+from hub_rtc.dominio.operacao import AliquotasNominais, ItemOperacao, Operacao
 from hub_rtc.dominio.resultado import ResultadoCalculo
 
 DIRETORIO_WEB = Path(__file__).parent / "web"
@@ -37,11 +37,18 @@ class ItemPedido(BaseModel):
     ncm: str | None = None
 
 
+class AliquotasNominaisPedido(BaseModel):
+    cbs: Decimal
+    ibs_estadual: Decimal
+    ibs_municipal: Decimal
+
+
 class PedidoCalculo(BaseModel):
     fato_gerador: datetime
     municipio: int
     uf: str
     tipo_documento: int | None = None
+    aliquotas_nominais: AliquotasNominaisPedido | None = None
     itens: list[ItemPedido]
 
     def para_dominio(self) -> Operacao:
@@ -50,6 +57,11 @@ class PedidoCalculo(BaseModel):
             municipio=self.municipio,
             uf=self.uf,
             tipo_documento=self.tipo_documento,
+            aliquotas_nominais=(
+                AliquotasNominais(**self.aliquotas_nominais.model_dump())
+                if self.aliquotas_nominais
+                else None
+            ),
             itens=tuple(ItemOperacao(**item.model_dump()) for item in self.itens),
         )
 
@@ -104,6 +116,7 @@ class TotaisResposta(BaseModel):
 class RespostaCalculo(BaseModel):
     itens: list[ItemResposta]
     totais: TotaisResposta
+    simulado: bool
 
     @classmethod
     def do_dominio(cls, resultado: ResultadoCalculo) -> "RespostaCalculo":
@@ -132,6 +145,7 @@ class RespostaCalculo(BaseModel):
                 ibs=resultado.total_ibs,
                 imposto_seletivo=resultado.total_imposto_seletivo,
             ),
+            simulado=resultado.simulado,
         )
 
 

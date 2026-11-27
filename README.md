@@ -22,6 +22,8 @@ oficial, por API e por tela web:
   cálculo do motor.
 - Exemplos prontos: tributação integral, medicamento (redução de 60%), bares e restaurantes
   (40%), isenção, imunidade, obras e bens imóveis (50%), oficina automotiva e vários itens.
+- Fatos geradores a partir de 01/01/2027: a tela pede as alíquotas nominais (CBS, IBS estadual e
+  municipal) e avisa que o cálculo é uma simulação com os valores informados.
 - Erros do motor traduzidos: 422 para recusa (ex.: CST inexistente), 503 para motor fora do ar.
 
 ### API do Hub
@@ -42,15 +44,13 @@ como texto, para não perder casas decimais.
 | 0 | Motores oficiais no Docker | Pronta |
 | 1 | Cálculo do Regime Regular (API e tela) | Pronta |
 | 2 | Publicação: repositório público, CI, tela no Pages, Hub via Tailscale Funnel | Pronta |
-| 3 | Completar o Regime Regular: alíquotas nominais (2027+), NBS, tipo de documento, Imposto Seletivo, exportação | Planejada |
+| 3 | Completar o Regime Regular: alíquotas nominais (2027+), NBS, tipo de documento, Imposto Seletivo, exportação | Em andamento (alíquotas nominais prontas) |
 | 4 | Simples Nacional | Planejada |
 | 5 | Gerador de DANFSe | Planejada |
 | 6 | Produção: servidor da empresa, HTTPS, acesso controlado, monitoramento | Planejada |
 
 ### Limitações conhecidas
 
-- **Fatos geradores a partir de 01/01/2027 não funcionam:** o motor exige `aliquotasNominais`
-  nesse caso e o Hub ainda não envia o campo.
 - A tela não tem campos de NBS, tipo de documento (NF-e, NFS-e) nem Imposto Seletivo.
 - Só foram testados tributação integral, reduções, isenção e imunidade. Crédito presumido,
   monofasia, diferimento e compra governamental não foram exercitados.

@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 
 from hub_rtc.dominio.erros import OperacaoInvalida
-from hub_rtc.dominio.operacao import ItemOperacao, Operacao
+from hub_rtc.dominio.operacao import AliquotasNominais, ItemOperacao, Operacao
 
 
 def um_item(**alteracoes: object) -> ItemOperacao:
@@ -70,3 +70,31 @@ def test_uf_precisa_ter_duas_letras() -> None:
             uf="SAO",
             itens=(um_item(),),
         )
+
+
+def test_aliquotas_nominais_validas_sao_aceitas() -> None:
+    aliquotas = AliquotasNominais(
+        cbs=Decimal("8.8"), ibs_estadual=Decimal("8.85"), ibs_municipal=Decimal("8.85")
+    )
+
+    assert aliquotas.cbs == Decimal("8.8")
+
+
+@pytest.mark.parametrize("invalida", [Decimal("-0.1"), Decimal("100.01")])
+def test_aliquota_nominal_precisa_estar_entre_zero_e_cem(invalida: Decimal) -> None:
+    with pytest.raises(OperacaoInvalida, match="alíquota nominal"):
+        AliquotasNominais(cbs=invalida, ibs_estadual=Decimal(1), ibs_municipal=Decimal(1))
+
+
+def test_operacao_guarda_as_aliquotas_nominais() -> None:
+    aliquotas = AliquotasNominais(Decimal("8.8"), Decimal("8.85"), Decimal("8.85"))
+    operacao = Operacao(
+        fato_gerador=datetime(2027, 1, 5, tzinfo=UTC),
+        municipio=3304557,
+        uf="RJ",
+        itens=(um_item(),),
+        aliquotas_nominais=aliquotas,
+    )
+
+    assert operacao.aliquotas_nominais is aliquotas
+    assert uma_operacao((um_item(),)).aliquotas_nominais is None

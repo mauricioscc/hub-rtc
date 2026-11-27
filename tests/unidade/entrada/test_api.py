@@ -42,7 +42,7 @@ class CasoDeUsoFalso:
             aliquota_ibs_municipal=Decimal("0.05"),
             memorias_de_calculo=(MemoriaDeCalculo("CBS", "explicação da CBS"),),
         )
-        return ResultadoCalculo(itens=(item,))
+        return ResultadoCalculo(itens=(item,), simulado=operacao.aliquotas_nominais is not None)
 
 
 class ConsultaFalsa:
@@ -153,3 +153,27 @@ def test_data_invalida_nas_situacoes_vira_422() -> None:
     resposta = cliente(CasoDeUsoFalso()).get("/api/situacoes-tributarias", params={"data": "ontem"})
 
     assert resposta.status_code == 422
+
+
+def test_pedido_com_aliquotas_nominais_chega_ao_dominio_e_resposta_indica_simulacao() -> None:
+    caso_de_uso = CasoDeUsoFalso()
+    pedido = {
+        **PEDIDO,
+        "fato_gerador": "2027-01-05T12:00:00-03:00",
+        "aliquotas_nominais": {"cbs": "8.8", "ibs_estadual": "8.85", "ibs_municipal": "8.85"},
+    }
+
+    resposta = cliente(caso_de_uso).post("/api/calculos/regime-regular", json=pedido)
+
+    assert resposta.status_code == 200
+    assert caso_de_uso.recebida is not None
+    nominais = caso_de_uso.recebida.aliquotas_nominais
+    assert nominais is not None
+    assert nominais.ibs_estadual == Decimal("8.85")
+    assert resposta.json()["simulado"] is True
+
+
+def test_pedido_sem_aliquotas_nominais_nao_e_simulado() -> None:
+    resposta = cliente(CasoDeUsoFalso()).post("/api/calculos/regime-regular", json=PEDIDO)
+
+    assert resposta.json()["simulado"] is False

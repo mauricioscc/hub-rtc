@@ -10,11 +10,32 @@ from hub_rtc.dominio.erros import OperacaoInvalida
 TAMANHO_CST = 3
 TAMANHO_CLASSIFICACAO = 6
 TAMANHO_UF = 2
+ALIQUOTA_MAXIMA = Decimal(100)
 
 
 def _exigir_digitos(valor: str, tamanho: int, nome: str) -> None:
     if not re.fullmatch(rf"\d{{{tamanho}}}", valor):
         raise OperacaoInvalida(f"{nome} deve ter {tamanho} dígitos, recebido '{valor}'")
+
+
+@dataclass(frozen=True)
+class AliquotasNominais:
+    """Alíquotas em %, informadas pelo usuário (o motor as exige a partir de 01/01/2027)."""
+
+    cbs: Decimal
+    ibs_estadual: Decimal
+    ibs_municipal: Decimal
+
+    def __post_init__(self) -> None:
+        for nome, valor in (
+            ("CBS", self.cbs),
+            ("IBS estadual", self.ibs_estadual),
+            ("IBS municipal", self.ibs_municipal),
+        ):
+            if not 0 <= valor <= ALIQUOTA_MAXIMA:
+                raise OperacaoInvalida(
+                    f"alíquota nominal de {nome} deve estar entre 0 e {ALIQUOTA_MAXIMA}%"
+                )
 
 
 @dataclass(frozen=True)
@@ -43,6 +64,7 @@ class Operacao:
     uf: str
     itens: tuple[ItemOperacao, ...]
     tipo_documento: int | None = None
+    aliquotas_nominais: AliquotasNominais | None = None
 
     def __post_init__(self) -> None:
         if not self.itens:

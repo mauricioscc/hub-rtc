@@ -10,7 +10,7 @@ import httpx
 
 from hub_rtc.dominio.catalogo import ClassificacaoTributaria, SituacaoTributaria
 from hub_rtc.dominio.erros import MotorIndisponivel, MotorRejeitouOperacao
-from hub_rtc.dominio.operacao import ItemOperacao, Operacao
+from hub_rtc.dominio.operacao import AliquotasNominais, ItemOperacao, Operacao
 from hub_rtc.dominio.resultado import MemoriaDeCalculo, ResultadoCalculo, TributosDoItem
 
 CAMINHO_CALCULO = "/api/calculadora/regime-geral"
@@ -27,6 +27,14 @@ TRIBUTOS_COM_MEMORIA = (
     ("IBS (UF)", "gIBSUF", "ibsUF"),
     ("IBS (município)", "gIBSMun", "ibsMun"),
 )
+
+
+def _aliquotas_para_json(aliquotas: AliquotasNominais) -> dict[str, float]:
+    return {
+        "cbs": float(aliquotas.cbs),
+        "ibsEstadual": float(aliquotas.ibs_estadual),
+        "ibsMunicipal": float(aliquotas.ibs_municipal),
+    }
 
 
 def _item_para_json(item: ItemOperacao) -> dict[str, Any]:
@@ -50,6 +58,10 @@ def _operacao_para_json(operacao: Operacao) -> dict[str, Any]:
         "uf": operacao.uf,
         "itens": [_item_para_json(item) for item in operacao.itens],
     }
+    if operacao.aliquotas_nominais is not None:
+        aliquotas = _aliquotas_para_json(operacao.aliquotas_nominais)
+        for json_item in json_operacao["itens"]:
+            json_item["aliquotasNominais"] = aliquotas
     if operacao.tipo_documento is not None:
         json_operacao["tpDoc"] = operacao.tipo_documento
     return json_operacao
@@ -146,7 +158,10 @@ class MotorRegimeRegular:
             lambda: self._cliente.post(CAMINHO_CALCULO, json=_operacao_para_json(operacao))
         )
         objetos = resposta.json().get("objetos", [])
-        return ResultadoCalculo(itens=tuple(_objeto_para_tributos(o) for o in objetos))
+        return ResultadoCalculo(
+            itens=tuple(_objeto_para_tributos(o) for o in objetos),
+            simulado=any(o.get("calculoSimulado") for o in objetos),
+        )
 
     def situacoes_tributarias(self, data: date) -> tuple[SituacaoTributaria, ...]:
         resposta = self._requisitar(
