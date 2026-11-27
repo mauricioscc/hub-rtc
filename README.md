@@ -93,3 +93,9 @@ src/hub_rtc/
 
 Dependências só apontam para dentro (camadas de baixo não conhecem as de cima).
 Decisões registradas em [docs/adr](docs/adr).
+
+## Licença
+
+[MIT](LICENSE). Os motores da Receita Federal usados pelo Hub são projetos separados,
+compilados das tags oficiais sem alteração (ver [ADR001](docs/adr/ADR001-nao-fazer-fork-dos-motores.md)),
+e seguem as licenças dos seus próprios repositórios.
