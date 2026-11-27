@@ -9,7 +9,7 @@ from hub_rtc.dominio.catalogo import ClassificacaoTributaria, SituacaoTributaria
 from hub_rtc.dominio.erros import ErroDoHub, MotorIndisponivel, MotorRejeitouOperacao
 from hub_rtc.dominio.operacao import Operacao
 from hub_rtc.dominio.resultado import MemoriaDeCalculo, ResultadoCalculo, TributosDoItem
-from hub_rtc.entrada.api import criar_app
+from hub_rtc.entrada.api import criar_app, criar_roteador_regime_regular
 
 PEDIDO: dict[str, Any] = {
     "fato_gerador": "2026-10-20T10:00:00-03:00",
@@ -56,7 +56,8 @@ class ConsultaFalsa:
 
 
 def cliente(caso_de_uso: CasoDeUsoFalso, consulta: ConsultaFalsa | None = None) -> TestClient:
-    return TestClient(criar_app(caso_de_uso, consulta or ConsultaFalsa()))
+    roteador = criar_roteador_regime_regular(caso_de_uso, consulta or ConsultaFalsa())
+    return TestClient(criar_app([roteador]))
 
 
 def test_calcula_e_devolve_itens_e_totais_como_texto() -> None:
@@ -242,3 +243,10 @@ def test_pedido_com_nbs_e_tipo_de_documento_chega_ao_dominio() -> None:
     assert caso_de_uso.recebida is not None
     assert caso_de_uso.recebida.tipo_documento == 55
     assert caso_de_uso.recebida.itens[0].nbs == "109052100"
+
+
+@pytest.mark.parametrize("arquivo", ["simples.html", "comum.js", "estilo.css"])
+def test_serve_os_arquivos_da_tela_do_simples(arquivo: str) -> None:
+    resposta = cliente(CasoDeUsoFalso()).get(f"/{arquivo}")
+
+    assert resposta.status_code == 200

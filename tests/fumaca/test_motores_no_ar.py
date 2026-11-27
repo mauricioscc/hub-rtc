@@ -180,3 +180,106 @@ def test_hub_envia_nbs_e_tipo_de_documento_e_repassa_as_regras_do_motor() -> Non
     desconhecido = calcular(tipo_documento=99)
     assert desconhecido.status_code == httpx.codes.UNPROCESSABLE_ENTITY
     assert "tpDoc" in desconhecido.json()["erro"]
+
+
+ALIQUOTAS_SIMPLES = {
+    "fator_r": False,
+    "anexos": {
+        "I": {"cbs": "1.1612", "ibs": "0.0129"},
+        "II": {"cbs": "1.2", "ibs": "0.02"},
+        "III": {
+            "cbs": "2.3874",
+            "ibs": "0.0263",
+            "sem_redistribuicao_iss": {"cbs": "2.3591", "ibs": "0.0260"},
+        },
+    },
+}
+
+
+def _simples(itens: list[dict[str, object]], **alteracoes: object) -> httpx.Response:
+    pedido = {
+        "data": "2027-03-15",
+        "tipo_documento": 55,
+        "crt": 1,
+        "aliquotas_efetivas": ALIQUOTAS_SIMPLES,
+        "itens": itens,
+        **alteracoes,
+    }
+    return httpx.post(
+        f"{ENDERECOS.hub}/api/calculos/simples-nacional", json=pedido, timeout=TEMPO_LIMITE_SEGUNDOS
+    )
+
+
+def _item_simples(**alteracoes: object) -> dict[str, object]:
+    item = {
+        "numero": 1,
+        "atividade": "01",
+        "classificacao_tributaria": "000001",
+        "base_calculo": "1000.00",
+        "ncm": "22030000",
+    }
+    return {**item, **alteracoes}
+
+
+def test_hub_calcula_o_simples_nacional_com_o_motor_real() -> None:
+    """Anexo I: R$ 1.000 x 1,1612% de CBS = 11,61 e x 0,0129% de IBS = 0,13."""
+    resposta = _simples([_item_simples()])
+
+    assert resposta.status_code == httpx.codes.OK, resposta.text
+    corpo = resposta.json()
+    assert corpo["regime_apuracao"] == "SN_PLENO"
+    assert corpo["itens"][0]["situacao"] == "CALCULADO"
+    assert corpo["itens"][0]["anexo"] == "I"
+    assert corpo["totais"] == {
+        "cbs": "11.61",
+        "ibs": "0.13",
+        "imposto_seletivo": "0.00",
+        "tributos": "11.74",
+    }
+
+
+def test_simples_com_crt_2_nao_calcula_ibs() -> None:
+    corpo = _simples([_item_simples()], crt=2).json()
+
+    assert corpo["totais"]["ibs"] == "0"
+    assert corpo["totais"]["cbs"] == "11.61"
+
+
+def test_simples_item_recusado_pelo_motor_traz_a_mensagem_e_nao_derruba_o_resto() -> None:
+    itens = [_item_simples(), _item_simples(numero=2, atividade="99")]
+
+    corpo = _simples(itens).json()
+
+    assert [i["situacao"] for i in corpo["itens"]] == ["CALCULADO", "NAO_CALCULADO"]
+    assert "99" in corpo["itens"][1]["mensagens"][0]
+    assert corpo["totais"]["cbs"] == "11.61"
+
+
+def test_simples_sem_a_aliquota_do_anexo_marca_o_item_como_inconsistente() -> None:
+    corpo = _simples([_item_simples()], aliquotas_efetivas={"anexos": {}}).json()
+
+    item = corpo["itens"][0]
+    assert item["situacao"] == "INCONSISTENCIA_ENTRADA"
+    assert "pCBSSN do anexo I" in item["mensagens"][0]
+    assert corpo["totais"]["tributos"] == "0"
+
+
+def test_simples_antes_da_vigencia_devolve_422_com_o_motivo_do_motor() -> None:
+    resposta = _simples([_item_simples()], data="2026-03-15")
+
+    assert resposta.status_code == httpx.codes.UNPROCESSABLE_ENTITY
+    assert "não suportado" in resposta.json()["erro"]
+
+
+def test_hub_lista_as_atividades_do_simples_nacional() -> None:
+    resposta = httpx.get(
+        f"{ENDERECOS.hub}/api/atividades-simples",
+        params={"data": "2027-03-15"},
+        timeout=TEMPO_LIMITE_SEGUNDOS,
+    )
+
+    assert resposta.status_code == httpx.codes.OK
+    primeira = resposta.json()[0]
+    assert primeira["codigo"] == "01"
+    assert primeira["anexo"] == "I"
+    assert 55 in primeira["tipos_de_documento"]

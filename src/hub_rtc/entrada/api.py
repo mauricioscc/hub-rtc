@@ -1,11 +1,12 @@
 """API HTTP do Hub (FastAPI). Traduz JSON para o domínio e erros do domínio para HTTP."""
 
+from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Protocol
 
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -196,11 +197,25 @@ def _responder_erro_do_hub(_: Request, erro: Exception) -> JSONResponse:
     return JSONResponse(status_code=status, content={"erro": str(erro)})
 
 
-def criar_app(
-    caso_de_uso: CasoDeUsoCalcular,
-    consulta_situacoes: ConsultaSituacoes,
-    origens_permitidas: tuple[str, ...] = (),
-) -> FastAPI:
+def criar_roteador_regime_regular(
+    caso_de_uso: CasoDeUsoCalcular, consulta_situacoes: ConsultaSituacoes
+) -> APIRouter:
+    roteador = APIRouter()
+
+    @roteador.post("/api/calculos/regime-regular")
+    def calcular(pedido: PedidoCalculo) -> RespostaCalculo:
+        resultado = caso_de_uso.executar(pedido.para_dominio())
+        return RespostaCalculo.do_dominio(resultado)
+
+    @roteador.get("/api/situacoes-tributarias")
+    def situacoes_tributarias(data: date | None = None) -> list[SituacaoResposta]:
+        situacoes = consulta_situacoes.executar(data or date.today())
+        return [SituacaoResposta.do_dominio(s) for s in situacoes]
+
+    return roteador
+
+
+def criar_app(roteadores: Sequence[APIRouter], origens_permitidas: tuple[str, ...] = ()) -> FastAPI:
     app = FastAPI(title="Hub RTC", version="0.1.0")
     if origens_permitidas:
         app.add_middleware(
@@ -215,15 +230,8 @@ def criar_app(
     def saude() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post("/api/calculos/regime-regular")
-    def calcular(pedido: PedidoCalculo) -> RespostaCalculo:
-        resultado = caso_de_uso.executar(pedido.para_dominio())
-        return RespostaCalculo.do_dominio(resultado)
-
-    @app.get("/api/situacoes-tributarias")
-    def situacoes_tributarias(data: date | None = None) -> list[SituacaoResposta]:
-        situacoes = consulta_situacoes.executar(data or date.today())
-        return [SituacaoResposta.do_dominio(s) for s in situacoes]
+    for roteador in roteadores:
+        app.include_router(roteador)
 
     # Por último: as rotas /api têm prioridade sobre os arquivos da tela.
     app.mount("/", StaticFiles(directory=DIRETORIO_WEB, html=True), name="web")

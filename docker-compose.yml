@@ -42,8 +42,11 @@ services:
     depends_on:
       regime-regular:
         condition: service_healthy
+      simples-nacional:
+        condition: service_healthy
     environment:
       URL_REGIME_REGULAR: http://regime-regular:8080
+      URL_SIMPLES_NACIONAL: http://simples-nacional:8082
       HUB_RTC_ORIGENS_PERMITIDAS: ${HUB_RTC_ORIGENS_PERMITIDAS:-}
     ports:
       - "${PORTA_HUB}:8000"

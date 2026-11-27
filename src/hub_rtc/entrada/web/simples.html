@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hub RTC · Simples Nacional</title>
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<main>
+  <nav class="navegacao"><a href="index.html">Regime Regular</a><a href="simples.html" aria-current="page">Simples Nacional</a></nav>
+  <h1>Hub RTC · Simples Nacional</h1>
+  <p class="aviso">Simulação feita com o motor oficial da Receita Federal (CBS e IBS no Simples Nacional). Não substitui a emissão nem a autorização de documentos fiscais.</p>
+
+  <section id="servidor" hidden>
+    <h2>Servidor da API</h2>
+    <label for="api">Endereço do Hub (ex.: https://hub.suaempresa.com.br)</label>
+    <input id="api" type="url" placeholder="https://...">
+  </section>
+
+  <section>
+    <h2>Exemplos prontos</h2>
+    <div class="exemplos" id="exemplos"></div>
+  </section>
+
+  <div class="colunas">
+    <form id="formulario">
+      <section>
+        <h2>Operação</h2>
+        <div class="grade">
+          <div><label for="data">Data do fato gerador</label><input id="data" type="date" required></div>
+          <div><label for="tp-doc">Tipo de documento</label>
+            <select id="tp-doc">
+              <option value="55">55 · NF-e</option>
+              <option value="65">65 · NFC-e</option>
+              <option value="57">57 · CT-e</option>
+            </select></div>
+          <div><label for="crt">Regime do emitente (CRT)</label>
+            <select id="crt">
+              <option value="1">1 · Simples</option>
+              <option value="2">2 · Sublimite excedido</option>
+            </select></div>
+        </div>
+        <p class="nota" style="margin-top:10px">O cálculo do Simples Nacional vale a partir de 2027. Com CRT 2 o motor não calcula o IBS.</p>
+      </section>
+
+      <section>
+        <h2>Alíquotas efetivas do período (%)</h2>
+        <p class="nota">São as alíquotas do contribuinte, por anexo, em pontos percentuais. Os valores abaixo são exemplos: informe os do seu período. Anexos sem uso podem ficar em branco.</p>
+        <div class="anexos" id="anexos"></div>
+        <div class="opcoes">
+          <div><label for="fator-r">Fator &quot;r&quot; (atividade 09)</label>
+            <select id="fator-r">
+              <option value="">Não informar</option>
+              <option value="true">28% ou mais (Anexo III)</option>
+              <option value="false">Abaixo de 28% (Anexo V)</option>
+            </select></div>
+          <label style="display:flex;gap:6px;align-items:center;margin:0"><input id="impedimento" type="checkbox" style="width:auto"> Impedido pelo sublimite (sem IBS no Simples)</label>
+        </div>
+      </section>
+
+      <section>
+        <h2>Itens</h2>
+        <p id="aviso-catalogo" hidden></p>
+        <datalist id="classificacoes"></datalist>
+        <div id="itens"></div>
+        <button type="button" id="novo-item">+ Adicionar item</button>
+      </section>
+
+      <button class="principal" id="calcular" type="submit">Calcular</button>
+      <div id="erro" role="alert"></div>
+    </form>
+
+    <div id="painel-resultado">
+      <section>
+        <h2>Resultado</h2>
+        <div id="vazio" class="vazio">Preencha a operação, ou escolha um exemplo, e clique em Calcular.</div>
+        <div id="resultado" hidden>
+          <p id="regime" class="nota"></p>
+          <div id="avisos" class="avisos" hidden></div>
+          <div class="tabela">
+            <table>
+              <thead><tr><th>Item</th><th>Base</th><th>CBS</th><th>IBS</th><th>IS</th><th>Total</th></tr></thead>
+              <tbody id="linhas"></tbody>
+              <tfoot><tr id="totais"></tr></tfoot>
+            </table>
+          </div>
+          <div id="memorias"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script src="comum.js"></script>
+<script>
+const ANEXOS = ["I", "II", "III", "IV", "V"];
+// Valores de exemplo; o contribuinte informa os do próprio período.
+const ALIQUOTAS_EXEMPLO = {
+  I: ["1.1612", "0.0129"], II: ["1.2", "0.02"], III: ["2.3874", "0.0263"], IV: ["", ""], V: ["", ""],
+};
+const SEM_REDISTRIBUICAO_EXEMPLO = { III: ["2.3591", "0.0260"], IV: ["", ""], V: ["", ""] };
+
+const EXEMPLOS = [
+  { nome: "Revenda de mercadorias (Anexo I)", itens: [{ atividade: "01", base: "1000.00", ncm: "22030000" }] },
+  { nome: "Com Imposto Seletivo", itens: [{ atividade: "01", base: "950.00", ncm: "22030000", seletivo: "50.00" }] },
+  { nome: "Excesso de sublimite (CRT 2)", crt: "2", itens: [{ atividade: "01", base: "1000.00", ncm: "22030000" }] },
+  { nome: "Dois itens, um com atividade inexistente", itens: [{ atividade: "01", base: "1000.00", ncm: "22030000" }, { atividade: "99", base: "200.00" }] },
+];
+
+let atividades = [];
+
+// ---------- alíquotas por anexo ----------
+function montarAnexos() {
+  const cabecalho = ["", "CBS", "IBS", "CBS sem redistrib. ISS", "IBS sem redistrib. ISS"];
+  $("anexos").append(...cabecalho.map((t) => el("span", { className: "cab", textContent: t })));
+  for (const anexo of ANEXOS) {
+    const [cbs, ibs] = ALIQUOTAS_EXEMPLO[anexo];
+    const [scbs, sibs] = SEM_REDISTRIBUICAO_EXEMPLO[anexo] ?? [null, null];
+    const campo = (id, valor, desligado) => el("input", { id: `al-${anexo}-${id}`, inputMode: "decimal", value: valor ?? "", disabled: desligado, title: desligado ? "Só nos anexos III a V" : "" });
+    $("anexos").append(el("b", { textContent: `Anexo ${anexo}` }), campo("cbs", cbs), campo("ibs", ibs),
+      campo("scbs", scbs, scbs === null), campo("sibs", sibs, sibs === null));
+  }
+}
+const numero = (id) => { const v = $(id).value.trim().replace(",", "."); return v === "" ? null : v; };
+function lerAnexos() {
+  const anexos = {};
+  for (const anexo of ANEXOS) {
+    const [cbs, ibs] = [numero(`al-${anexo}-cbs`), numero(`al-${anexo}-ibs`)];
+    const [scbs, sibs] = [numero(`al-${anexo}-scbs`), numero(`al-${anexo}-sibs`)];
+    if (cbs === null && ibs === null) continue;
+    anexos[anexo] = { cbs, ibs };
+    if (scbs !== null || sibs !== null) anexos[anexo].sem_redistribuicao_iss = { cbs: scbs, ibs: sibs };
+  }
+  return anexos;
+}
+
+// ---------- catálogos (atividades e classificações) ----------
+const atividadesDoDocumento = () => {
+  const tipo = Number($("tp-doc").value);
+  const aplicaveis = atividades.filter((a) => a.disponivel && a.tipos_de_documento.includes(tipo));
+  return aplicaveis.length ? aplicaveis : atividades;
+};
+function preencherAtividades(select, escolhida) {
+  select.replaceChildren(el("option", { value: "", textContent: "Selecione…" }));
+  for (const a of atividadesDoDocumento()) {
+    select.append(el("option", { value: a.codigo, textContent: `${a.codigo} · ${a.descricao} (Anexo ${a.anexo})`, title: a.descricao }));
+  }
+  if (escolhida && !select.querySelector(`option[value="${escolhida}"]`)) {
+    select.append(el("option", { value: escolhida, textContent: `${escolhida} · (fora da lista)` }));
+  }
+  select.value = escolhida ?? "";
+}
+async function buscar(caminho) {
+  const resposta = await fetch(`${baseApi()}${caminho}`);
+  if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
+  return resposta.json();
+}
+async function carregarCatalogos() {
+  const aviso = $("aviso-catalogo");
+  aviso.hidden = true;
+  const data = $("data").value;
+  try {
+    atividades = await buscar(`/api/atividades-simples?data=${data}`);
+    const situacoes = await buscar(`/api/situacoes-tributarias?data=${data}`);
+    $("classificacoes").replaceChildren(...situacoes.flatMap((s) => s.classificacoes).map((c) =>
+      el("option", { value: c.codigo, textContent: c.descricao })));
+  } catch {
+    atividades = [];
+    aviso.textContent = "Não consegui carregar as atividades. Confira o endereço do Hub e se ele está no ar.";
+    aviso.hidden = false;
+  }
+  for (const select of document.querySelectorAll(".atividade")) preencherAtividades(select, select.value);
+}
+
+// ---------- itens ----------
+function novoItem({ atividade = "", classificacao = "000001", base = "", ncm = "", nbs = "", seletivo = "" } = {}) {
+  const campo = (rotulo, controle, classe = "") => el("div", { className: classe }, el("label", { textContent: rotulo }), controle);
+  const selAtividade = el("select", { className: "atividade", required: true });
+  const item = el("div", { className: "item simples" },
+    campo("Nº", el("input", { className: "numero", inputMode: "numeric", required: true, value: $("itens").children.length + 1 })),
+    campo("Atividade do Simples Nacional", selAtividade, "cst-campo"),
+    campo("Classificação tributária (6 dígitos)", el("input", { className: "classificacao", maxLength: 6, required: true, value: classificacao }), "larga"),
+    campo("Base de cálculo (R$)", el("input", { className: "base", inputMode: "decimal", required: true, placeholder: "1000.00", value: base }), "base-campo"),
+    campo("Imposto Seletivo (R$)", el("input", { className: "seletivo-valor", inputMode: "decimal", placeholder: "0.00", value: seletivo })),
+    campo("NCM (opcional)", el("input", { className: "ncm", maxLength: 8, value: ncm })),
+    campo("NBS (opcional)", el("input", { className: "nbs", maxLength: 9, inputMode: "numeric", value: nbs })),
+    el("button", { type: "button", className: "remover", title: "Remover item", textContent: "×", onclick: () => { if ($("itens").children.length > 1) item.remove(); } }));
+  item.querySelector(".classificacao").setAttribute("list", "classificacoes");
+  $("itens").append(item);
+  preencherAtividades(selAtividade, atividade);
+}
+
+async function aplicarExemplo(exemplo) {
+  $("crt").value = exemplo.crt ?? "1";
+  $("itens").replaceChildren();
+  for (const item of exemplo.itens) novoItem(item);
+  $("erro").textContent = "";
+}
+
+// ---------- cálculo ----------
+function montarPedido() {
+  const fatorR = $("fator-r").value;
+  const itens = [...$("itens").children].map((l) => {
+    const valor = (classe) => l.querySelector(classe).value.trim().replace(",", ".");
+    const item = {
+      numero: Number(valor(".numero")),
+      atividade: valor(".atividade"),
+      classificacao_tributaria: valor(".classificacao"),
+      base_calculo: valor(".base"),
+    };
+    if (valor(".seletivo-valor")) item.valor_imposto_seletivo = valor(".seletivo-valor");
+    if (valor(".ncm")) item.ncm = valor(".ncm");
+    if (valor(".nbs")) item.nbs = valor(".nbs");
+    return item;
+  });
+  const aliquotas = { anexos: lerAnexos(), impedimento_sublimite: $("impedimento").checked };
+  if (fatorR) aliquotas.fator_r = fatorR === "true";
+  return { data: $("data").value, tipo_documento: Number($("tp-doc").value), crt: Number($("crt").value), aliquotas_efetivas: aliquotas, itens };
+}
+
+const ROTULO_SITUACAO = { CALCULADO: "", NAO_CALCULADO: "não calculado", INCONSISTENCIA_ENTRADA: "dados inconsistentes" };
+const ROTULO_REGIME = {
+  SN_PLENO: "Simples Nacional (IBS e CBS no Simples)", SN_SUBLIMITE: "Simples Nacional, excesso de sublimite (só CBS no Simples)",
+  PENDENTE: "Regime pendente", PENDENTE_SUBLIMITE: "Regime pendente, excesso de sublimite", SOMENTE_RECEITA: "Somente receita (regime regular do IBS/CBS)",
+};
+
+function celulaValor(valor, aliquota) {
+  const td = el("td", { textContent: dinheiro(valor) });
+  if (aliquota !== undefined) td.append(el("small", { textContent: `alíq. ${Number(aliquota).toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%` }));
+  return td;
+}
+function celulaItem(i) {
+  const td = el("td", { textContent: i.numero });
+  if (i.anexo) td.append(el("small", { textContent: `Anexo ${i.anexo}` }));
+  if (ROTULO_SITUACAO[i.situacao]) td.append(el("span", { className: "situacao", textContent: ROTULO_SITUACAO[i.situacao] }));
+  for (const m of i.mensagens) td.append(el("span", { className: "mensagem-item", textContent: m }));
+  return td;
+}
+
+function mostrarResultado(corpo) {
+  $("linhas").replaceChildren(...corpo.itens.map((i) => el("tr", {}, celulaItem(i), celulaValor(i.base_calculo),
+    celulaValor(i.cbs, i.aliquota_cbs), celulaValor(i.ibs, i.aliquota_ibs), celulaValor(i.imposto_seletivo), celulaValor(i.total))));
+  const t = corpo.totais;
+  $("totais").replaceChildren(el("td", { textContent: "Total" }), el("td"),
+    celulaValor(t.cbs), celulaValor(t.ibs), celulaValor(t.imposto_seletivo), celulaValor(t.tributos));
+  $("memorias").replaceChildren(...corpo.itens.filter((i) => i.memorias.length).map((i) =>
+    el("details", {}, el("summary", { textContent: `Memória de cálculo · item ${i.numero}` }),
+      ...i.memorias.map((m) => el("p", { className: "memoria" }, el("b", { textContent: `${m.tributos}: ` }), m.texto)))));
+  $("regime").textContent = corpo.regime_apuracao ? `Regime de apuração: ${ROTULO_REGIME[corpo.regime_apuracao] ?? corpo.regime_apuracao}` : "";
+  $("avisos").replaceChildren(...corpo.avisos.map((a) => el("div", { textContent: a })));
+  $("avisos").hidden = !corpo.avisos.length;
+  $("vazio").hidden = true;
+  $("resultado").hidden = false;
+}
+
+$("formulario").onsubmit = async (evento) => {
+  evento.preventDefault();
+  const botao = $("calcular");
+  $("erro").textContent = "";
+  botao.disabled = true;
+  try {
+    if (noPages) guardar("api", $("api").value.trim());
+    mostrarResultado(await enviarAoHub("/api/calculos/simples-nacional", montarPedido()));
+  } catch (e) {
+    $("erro").textContent = e instanceof TypeError ? MENSAGEM_SEM_HUB : e.message;
+    $("resultado").hidden = true;
+    $("vazio").hidden = false;
+  } finally {
+    botao.disabled = false;
+  }
+};
+
+// ---------- início ----------
+for (const exemplo of EXEMPLOS) {
+  $("exemplos").append(el("button", { type: "button", textContent: exemplo.nome, onclick: () => aplicarExemplo(exemplo) }));
+}
+$("novo-item").onclick = () => novoItem();
+$("data").value = hojeLocal() < "2027-01-01" ? "2027-03-15" : hojeLocal();
+$("data").onchange = carregarCatalogos;
+$("tp-doc").onchange = () => { for (const s of document.querySelectorAll(".atividade")) preencherAtividades(s, s.value); };
+prepararServidor(carregarCatalogos);
+montarAnexos();
+novoItem({ atividade: "01", base: "1000.00", ncm: "22030000" });
+carregarCatalogos();
+</script>
+</body>
+</html>

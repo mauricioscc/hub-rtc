@@ -8,8 +8,8 @@ from uuid import uuid4
 
 import httpx
 
+from hub_rtc.adaptadores.http_motor import requisitar
 from hub_rtc.dominio.catalogo import ClassificacaoTributaria, SituacaoTributaria
-from hub_rtc.dominio.erros import MotorIndisponivel, MotorRejeitouOperacao
 from hub_rtc.dominio.operacao import (
     AliquotasNominais,
     ImpostoSeletivoItem,
@@ -21,8 +21,7 @@ from hub_rtc.dominio.resultado import MemoriaDeCalculo, ResultadoCalculo, Tribut
 CAMINHO_CALCULO = "/api/calculadora/regime-geral"
 CAMINHO_SITUACOES = "/api/calculadora/dados-abertos/situacoes-tributarias/cbs-ibs"
 VERSAO_DO_FORMATO = "0.0.1"
-PRIMEIRO_ERRO_DO_CLIENTE = 400
-PRIMEIRO_ERRO_DO_SERVIDOR = 500
+NOME_DO_MOTOR = "Regime Regular"
 
 Json = Mapping[str, Any]
 
@@ -162,20 +161,6 @@ def _situacao_do_motor(situacao: Json) -> SituacaoTributaria:
     )
 
 
-def _mensagem_de_recusa(resposta: httpx.Response) -> str:
-    try:
-        corpo = resposta.json()
-    except ValueError:
-        return resposta.text.strip() or f"HTTP {resposta.status_code}"
-    erros = corpo if isinstance(corpo, list) else [corpo]
-    detalhes = [
-        str(erro.get("detail") or erro.get("descricao") or erro.get("title"))
-        for erro in erros
-        if isinstance(erro, dict)
-    ]
-    return "; ".join(detalhes) or f"HTTP {resposta.status_code}"
-
-
 class MotorRegimeRegular:
     """Cumpre as portas de cálculo e de catálogo conversando com o mesmo motor."""
 
@@ -183,8 +168,9 @@ class MotorRegimeRegular:
         self._cliente = cliente
 
     def calcular(self, operacao: Operacao) -> ResultadoCalculo:
-        resposta = self._requisitar(
-            lambda: self._cliente.post(CAMINHO_CALCULO, json=_operacao_para_json(operacao))
+        resposta = requisitar(
+            lambda: self._cliente.post(CAMINHO_CALCULO, json=_operacao_para_json(operacao)),
+            NOME_DO_MOTOR,
         )
         objetos = resposta.json().get("objetos", [])
         return ResultadoCalculo(
@@ -193,18 +179,8 @@ class MotorRegimeRegular:
         )
 
     def situacoes_tributarias(self, data: date) -> tuple[SituacaoTributaria, ...]:
-        resposta = self._requisitar(
-            lambda: self._cliente.get(CAMINHO_SITUACOES, params={"data": data.isoformat()})
+        resposta = requisitar(
+            lambda: self._cliente.get(CAMINHO_SITUACOES, params={"data": data.isoformat()}),
+            NOME_DO_MOTOR,
         )
         return tuple(_situacao_do_motor(s) for s in resposta.json())
-
-    def _requisitar(self, enviar: Any) -> httpx.Response:
-        try:
-            resposta: httpx.Response = enviar()
-        except httpx.TransportError as erro:
-            raise MotorIndisponivel("o motor Regime Regular não respondeu") from erro
-        if resposta.status_code >= PRIMEIRO_ERRO_DO_SERVIDOR:
-            raise MotorIndisponivel(f"o motor falhou (HTTP {resposta.status_code})")
-        if resposta.status_code >= PRIMEIRO_ERRO_DO_CLIENTE:
-            raise MotorRejeitouOperacao(_mensagem_de_recusa(resposta))
-        return resposta

@@ -4,56 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hub RTC</title>
-<style>
-  :root { --fundo:#f3f5f8; --card:#fff; --texto:#1c2430; --suave:#5b6675; --borda:#d8dde5; --marca:#0b5cab; --marca-fraca:#e6f0fb; --sobre-marca:#fff; --erro:#b42318; }
-  @media (prefers-color-scheme: dark) {
-    :root { --fundo:#14181f; --card:#1d232d; --texto:#e8ecf2; --suave:#9aa6b6; --borda:#2f3846; --marca:#5aa7f0; --marca-fraca:#1f3550; --sobre-marca:#0b1a2b; --erro:#ff8a80; }
-  }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--fundo); color:var(--texto); font:16px/1.45 system-ui, sans-serif; }
-  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 1.4rem; margin: 0 0 4px; }
-  .aviso { color: var(--suave); font-size: .85rem; margin: 0 0 16px; }
-  section { background:var(--card); border:1px solid var(--borda); border-radius:10px; padding:16px; margin-bottom:16px; }
-  h2 { font-size: 1rem; margin: 0 0 12px; }
-  .colunas { display:grid; gap:16px; align-items:start; }
-  @media (min-width: 960px) { .colunas { grid-template-columns: minmax(380px, 5fr) 7fr; } #painel-resultado { position: sticky; top: 16px; } }
-  .grade { display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:12px; }
-  label { display:block; font-size:.78rem; color:var(--suave); margin-bottom:2px; }
-  input, select { width:100%; padding:8px; border:1px solid var(--borda); border-radius:6px; background:var(--fundo); color:var(--texto); font:inherit; text-overflow:ellipsis; }
-  .item { border:1px solid var(--borda); border-radius:8px; padding:12px; margin-bottom:10px; display:grid; grid-template-columns: 64px 1fr 1fr; gap:10px; position:relative; }
-  .item .larga { grid-column: 1 / -1; }
-  .item .base-campo { grid-column: 1 / 3; }
-  .item .cst-campo { grid-column: 2 / -1; padding-right:26px; }
-  .item .seletivo { grid-column: 1 / -1; }
-  .item .seletivo summary { cursor:pointer; font-size:.85rem; color:var(--suave); }
-  .item .seletivo .grade { margin-top:8px; }
-  .item .remover { position:absolute; top:6px; right:6px; padding:0 8px; line-height:1.4; }
-  button { padding:8px 14px; border-radius:6px; border:1px solid var(--borda); background:var(--card); color:var(--texto); font:inherit; cursor:pointer; }
-  button.principal { background:var(--marca); border-color:var(--marca); color:var(--sobre-marca); font-weight:600; width:100%; padding:11px; }
-  button:disabled { opacity:.6; cursor:wait; }
-  .exemplos { display:flex; flex-wrap:wrap; gap:8px; }
-  .exemplos button { background:var(--marca-fraca); border-color:transparent; font-size:.85rem; }
-  #erro { color:var(--erro); margin-top:12px; white-space:pre-wrap; }
-  #aviso-catalogo { color:var(--erro); font-size:.85rem; margin:0 0 10px; }
-  table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
-  th, td { padding:8px; text-align:right; border-bottom:1px solid var(--borda); vertical-align:top; }
-  th:first-child, td:first-child { text-align:left; }
-  td small { display:block; color:var(--suave); font-size:.75rem; }
-  tfoot td { font-weight:700; border-bottom:0; }
-  .tabela { overflow-x:auto; }
-  details { border:1px solid var(--borda); border-radius:8px; padding:8px 12px; margin-top:10px; }
-  summary { cursor:pointer; font-weight:600; }
-  .memoria { margin:8px 0 0; font-size:.88rem; }
-  .memoria b { color:var(--marca); }
-  .vazio { color:var(--suave); text-align:center; padding:32px 8px; }
-  .nota { color:var(--suave); font-size:.85rem; margin:0 0 10px; }
-  #nota-simulado { background:var(--marca-fraca); border-radius:6px; padding:8px 10px; font-size:.85rem; margin:0 0 10px; }
-  [hidden] { display:none !important; }
-</style>
+<link rel="stylesheet" href="estilo.css">
 </head>
 <body>
 <main>
+  <nav class="navegacao"><a href="index.html" aria-current="page">Regime Regular</a><a href="simples.html">Simples Nacional</a></nav>
   <h1>Hub RTC · Regime Regular</h1>
   <p class="aviso">Simulação feita com o motor oficial da Receita Federal (CBS, IBS e Imposto Seletivo). Não substitui a emissão nem a autorização de documentos fiscais.</p>
 
@@ -134,24 +89,8 @@
   </div>
 </main>
 
+<script src="comum.js"></script>
 <script>
-// Quando a tela é servida pelo próprio Hub, a API é o mesmo endereço.
-// No GitHub Pages (outro domínio) o endereço do Hub é informado e lembrado no navegador.
-const noPages = location.hostname.endsWith("github.io");
-// Hub de testes publicado pelo Tailscale Funnel; pode ser trocado no campo "Servidor da API".
-const HUB_PADRAO = "https://office-mscx.tailbf5033.ts.net";
-const $ = (id) => document.getElementById(id);
-const guardar = (chave, valor) => { try { localStorage.setItem(chave, valor); } catch {} };
-const lembrar = (chave) => { try { return localStorage.getItem(chave) || ""; } catch { return ""; } };
-const baseApi = () => (noPages ? $("api").value.trim().replace(/\/$/, "") : "");
-
-// Cria elementos sem interpretar HTML: o texto vindo do motor nunca vira marcação.
-function el(tag, props = {}, ...filhos) {
-  const e = Object.assign(document.createElement(tag), props);
-  e.append(...filhos);
-  return e;
-}
-
 const EXEMPLOS = [
   { nome: "Tributação integral", itens: [["000", "000001", "100.00"]] },
   { nome: "Medicamento (redução de 60%)", itens: [["200", "200032", "100.00"]] },
@@ -273,7 +212,6 @@ function montarPedido() {
   return pedido;
 }
 
-const hojeLocal = () => new Date().toLocaleDateString("sv-SE");
 const exigeAliquotas = () => $("data").value >= "2027-01-01";
 const usaSeletivo = (item) => item.querySelector(".is-base").value.trim() !== "";
 const algumItemComSeletivo = () => [...$("itens").children].some(usaSeletivo);
@@ -289,7 +227,6 @@ function lerSeletivo(item) {
   return seletivo;
 }
 
-const dinheiro = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function celulaValor(valor, aliquota) {
   const td = el("td", { textContent: dinheiro(valor) });
@@ -314,11 +251,6 @@ function mostrarResultado(corpo) {
   $("resultado").hidden = false;
 }
 
-function mensagemDeErro(corpo) {
-  if (corpo && corpo.erro) return corpo.erro;
-  if (corpo && Array.isArray(corpo.detail)) return corpo.detail.map((d) => `${d.loc.slice(1).join(".")}: ${d.msg}`).join("\n");
-  return "Não foi possível calcular.";
-}
 
 $("formulario").onsubmit = async (evento) => {
   evento.preventDefault();
@@ -327,16 +259,10 @@ $("formulario").onsubmit = async (evento) => {
   botao.disabled = true;
   try {
     if (noPages) guardar("api", $("api").value.trim());
-    const resposta = await fetch(`${baseApi()}/api/calculos/regime-regular`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(montarPedido()),
-    });
-    const corpo = await resposta.json().catch(() => null);
-    if (!resposta.ok) throw new Error(mensagemDeErro(corpo));
+    const corpo = await enviarAoHub("/api/calculos/regime-regular", montarPedido());
     mostrarResultado(corpo);
   } catch (e) {
-    $("erro").textContent = e instanceof TypeError ? "Não consegui falar com o servidor do Hub. Confira o endereço e se ele está no ar." : e.message;
+    $("erro").textContent = e instanceof TypeError ? MENSAGEM_SEM_HUB : e.message;
     $("resultado").hidden = true;
     $("vazio").hidden = false;
   } finally {
@@ -351,12 +277,7 @@ for (const exemplo of EXEMPLOS) {
 $("novo-item").onclick = () => novoItem();
 $("data").value = hojeLocal();
 $("data").onchange = () => { atualizarAliquotas(); carregarCatalogo(); };
-if (noPages) {
-  $("servidor").hidden = false;
-  $("api").value = new URLSearchParams(location.search).get("api") || lembrar("api") || HUB_PADRAO;
-  $("api").required = true;
-  $("api").onchange = carregarCatalogo;
-}
+prepararServidor(carregarCatalogo);
 novoItem();
 carregarCatalogo();
 </script>

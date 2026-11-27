@@ -14,7 +14,7 @@ TAMANHO_NBS = 9
 ALIQUOTA_MAXIMA = Decimal(100)
 
 
-def _exigir_digitos(valor: str, tamanho: int, nome: str) -> None:
+def exigir_digitos(valor: str, tamanho: int, nome: str) -> None:
     if not re.fullmatch(rf"\d{{{tamanho}}}", valor):
         raise OperacaoInvalida(f"{nome} deve ter {tamanho} dígitos, recebido '{valor}'")
 
@@ -65,8 +65,8 @@ class ImpostoSeletivoItem:
     unidade: str | None = None
 
     def __post_init__(self) -> None:
-        _exigir_digitos(self.cst, TAMANHO_CST, "CST do Imposto Seletivo")
-        _exigir_digitos(
+        exigir_digitos(self.cst, TAMANHO_CST, "CST do Imposto Seletivo")
+        exigir_digitos(
             self.classificacao_tributaria,
             TAMANHO_CLASSIFICACAO,
             "classificação do Imposto Seletivo",
@@ -90,12 +90,12 @@ class ItemOperacao:
     def __post_init__(self) -> None:
         if self.numero < 1:
             raise OperacaoInvalida(f"número do item deve ser positivo, recebido {self.numero}")
-        _exigir_digitos(self.cst, TAMANHO_CST, "CST")
-        _exigir_digitos(
+        exigir_digitos(self.cst, TAMANHO_CST, "CST")
+        exigir_digitos(
             self.classificacao_tributaria, TAMANHO_CLASSIFICACAO, "classificação tributária"
         )
         if self.nbs is not None:
-            _exigir_digitos(self.nbs, TAMANHO_NBS, "NBS")
+            exigir_digitos(self.nbs, TAMANHO_NBS, "NBS")
         if self.base_calculo is None and self.imposto_seletivo is None:
             raise OperacaoInvalida("base de cálculo é obrigatória sem Imposto Seletivo")
         if self.base_calculo is not None and self.base_calculo < 0:

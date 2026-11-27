@@ -15,7 +15,7 @@ Federal para a Reforma Tributária do Consumo (CBS, IBS e Imposto Seletivo, LC 2
 ## O que funciona hoje
 
 **Cálculo do Regime Regular** (CBS, IBS estadual e municipal, Imposto Seletivo) pelo motor
-oficial, por API e por tela web:
+oficial, por API e por tela web (`index.html`):
 
 - Listas de seleção de CST e classificação tributária, vindas do motor para a data informada.
 - Resultado por item e em total, com a alíquota efetiva (já com a redução) e a memória de
@@ -31,12 +31,25 @@ oficial, por API e por tela web:
   000001 não aceita NBS) e a tela mostra a mensagem dele.
 - Erros do motor traduzidos: 422 para recusa (ex.: CST inexistente), 503 para motor fora do ar.
 
+**Cálculo do Simples Nacional** (CBS e IBS) pelo motor oficial, por API e por tela web
+(`simples.html`, com navegação entre as duas telas):
+
+- NF-e, NFC-e e CT-e, com CRT 1 (Simples) ou 2 (excesso de sublimite, sem IBS).
+- Alíquotas efetivas do período informadas por anexo (I a V, com o par sem redistribuição do
+  ISS nos anexos III a V), fator "r" e impedimento pelo sublimite.
+- Atividade do Simples Nacional escolhida numa lista vinda do motor, filtrada pelo tipo de documento.
+- Item que o motor não consegue calcular (atividade inexistente, alíquota do anexo ausente,
+  classificação incompatível) aparece com a mensagem dele, sem derrubar os demais itens.
+- Mostra o regime de apuração, os avisos e a memória de cálculo. O cálculo vale a partir de 2027.
+
 ### API do Hub
 
 | Rota | O que faz |
 | --- | --- |
 | `POST /api/calculos/regime-regular` | Calcula os tributos de uma operação |
 | `GET /api/situacoes-tributarias?data=AAAA-MM-DD` | Lista CSTs e classificações vigentes na data |
+| `POST /api/calculos/simples-nacional` | Calcula CBS e IBS de uma operação do Simples Nacional |
+| `GET /api/atividades-simples?data=AAAA-MM-DD` | Lista as atividades do Simples Nacional vigentes na data |
 | `GET /api/saude` | Confere se o Hub está no ar |
 
 A documentação interativa fica em `/docs` do Hub. Valores monetários e alíquotas saem
@@ -50,7 +63,7 @@ como texto, para não perder casas decimais.
 | 1 | Cálculo do Regime Regular (API e tela) | Pronta |
 | 2 | Publicação: repositório público, CI, tela no Pages, Hub via Tailscale Funnel | Pronta |
 | 3 | Completar o Regime Regular: alíquotas nominais (2027+), Imposto Seletivo, NBS, tipo de documento, exportação | Em andamento (só falta a exportação) |
-| 4 | Simples Nacional | Planejada |
+| 4 | Simples Nacional | Em andamento (NF-e, NFC-e e CT-e prontos; falta NFS-e) |
 | 5 | Gerador de DANFSe | Planejada |
 | 6 | Produção: servidor da empresa, HTTPS, acesso controlado, monitoramento | Planejada |
 
@@ -61,7 +74,10 @@ como texto, para não perder casas decimais.
 - Só foram testados tributação integral, reduções, isenção e imunidade. Crédito presumido,
   monofasia, diferimento e compra governamental não foram exercitados.
 - O Hub público não tem login nem limite de uso.
-- Os motores Simples Nacional e DANFSe sobem e respondem, mas o Hub ainda não os usa.
+- Simples Nacional: a NFS-e (tipo 91, com os campos de ISS e de regime municipal), o MEI e a
+  tela de compra governamental ainda não existem. As alíquotas efetivas são digitadas pelo
+  usuário: o Hub não as calcula a partir da receita acumulada.
+- O motor do Gerador de DANFSe sobe e responde, mas o Hub ainda não o usa.
 
 ## Subir o Hub e os motores
 
@@ -130,7 +146,7 @@ src/hub_rtc/
   dominio/        entidades e regras, sem I/O
   portas/         interfaces (Protocol) que os casos de uso exigem
   casos_de_uso/   um caso de uso por arquivo
-  adaptadores/    cliente HTTP do motor (hoje só o Regime Regular)
+  adaptadores/    clientes HTTP dos motores (Regime Regular e Simples Nacional)
   entrada/        rotas FastAPI e tela web
   composicao.py   único ponto que liga portas a adaptadores
 ```
