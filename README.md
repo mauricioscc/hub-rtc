@@ -52,6 +52,11 @@ Para o funcionário testar:
 3. O funcionário abre `https://<usuario>.github.io/<repositorio>/`, informa o endereço do
    Hub uma vez (fica lembrado no navegador) ou usa `?api=https://endereco-do-hub`.
 
+Endereço atual dos testes: tela em <https://mauricioscc.github.io/hub-rtc/>, Hub em
+`https://office-mscx.tailbf5033.ts.net`, publicado pelo Tailscale Funnel a partir do PC
+do desenvolvedor (`tailscale funnel --bg 8000`; para desligar: `tailscale funnel --https=443 off`).
+O Hub só responde enquanto esse PC e o Docker estiverem ligados.
+
 Sem Pages, basta abrir o endereço do próprio Hub: ele serve a mesma tela.
 
 ## Desenvolvimento

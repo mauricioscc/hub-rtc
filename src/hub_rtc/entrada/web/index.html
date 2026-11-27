@@ -108,6 +108,8 @@
 // Quando a tela é servida pelo próprio Hub, a API é o mesmo endereço.
 // No GitHub Pages (outro domínio) o endereço do Hub é informado e lembrado no navegador.
 const noPages = location.hostname.endsWith("github.io");
+// Hub de testes publicado pelo Tailscale Funnel; pode ser trocado no campo "Servidor da API".
+const HUB_PADRAO = "https://office-mscx.tailbf5033.ts.net";
 const $ = (id) => document.getElementById(id);
 const guardar = (chave, valor) => { try { localStorage.setItem(chave, valor); } catch {} };
 const lembrar = (chave) => { try { return localStorage.getItem(chave) || ""; } catch { return ""; } };
@@ -273,7 +275,7 @@ $("data").value = new Date().toLocaleDateString("sv-SE");
 $("data").onchange = carregarCatalogo;
 if (noPages) {
   $("servidor").hidden = false;
-  $("api").value = new URLSearchParams(location.search).get("api") || lembrar("api");
+  $("api").value = new URLSearchParams(location.search).get("api") || lembrar("api") || HUB_PADRAO;
   $("api").required = true;
   $("api").onchange = carregarCatalogo;
 }
