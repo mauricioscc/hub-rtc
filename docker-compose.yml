@@ -1,4 +1,4 @@
-# Hub RTC - Fase 0: os três motores oficiais da Receita Federal.
+# Hub RTC: o Hub (API + tela) e os motores oficiais da Receita Federal.
 # Uso:  cp .env.example .env  &&  docker compose up -d --build
 name: hub-rtc
 
@@ -33,6 +33,27 @@ services:
       timeout: 5s
       retries: 3
       start_period: 90s
+
+  # O Hub: API + tela web. Fala com os motores pela rede interna do Docker.
+  hub:
+    build:
+      context: .
+      dockerfile: docker/hub/Dockerfile
+    depends_on:
+      regime-regular:
+        condition: service_healthy
+    environment:
+      URL_REGIME_REGULAR: http://regime-regular:8080
+      HUB_RTC_ORIGENS_PERMITIDAS: ${HUB_RTC_ORIGENS_PERMITIDAS:-}
+    ports:
+      - "${PORTA_HUB}:8000"
+    mem_limit: 256m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/api/saude')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
   simples-nacional:
     build:

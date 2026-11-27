@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hub RTC</title>
+<style>
+  :root { --fundo:#f6f7f9; --card:#fff; --texto:#1c2430; --suave:#5b6675; --borda:#d8dde5; --marca:#0b5cab; --erro:#b42318; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fundo:#14181f; --card:#1d232d; --texto:#e8ecf2; --suave:#9aa6b6; --borda:#2f3846; --marca:#5aa7f0; --erro:#ff8a80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--fundo); color:var(--texto); font:16px/1.45 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .aviso { color: var(--suave); font-size: .85rem; margin: 0 0 20px; }
+  section { background:var(--card); border:1px solid var(--borda); border-radius:10px; padding:16px; margin-bottom:16px; }
+  h2 { font-size: 1rem; margin: 0 0 12px; }
+  .grade { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:12px; }
+  label { display:block; font-size:.8rem; color:var(--suave); }
+  input { width:100%; padding:8px; border:1px solid var(--borda); border-radius:6px; background:var(--fundo); color:var(--texto); font:inherit; }
+  .item { display:grid; grid-template-columns: 60px 80px 110px 1fr 1fr 36px; gap:8px; align-items:end; margin-bottom:8px; }
+  @media (max-width: 640px) { .item { grid-template-columns: 1fr 1fr; } }
+  button { padding:9px 14px; border-radius:6px; border:1px solid var(--borda); background:var(--card); color:var(--texto); font:inherit; cursor:pointer; }
+  button.principal { background:var(--marca); border-color:var(--marca); color:#fff; font-weight:600; }
+  button:disabled { opacity:.6; cursor:wait; }
+  #erro { color:var(--erro); margin-top:12px; white-space:pre-wrap; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding:6px 8px; text-align:right; border-bottom:1px solid var(--borda); }
+  th:first-child, td:first-child { text-align:left; }
+  tfoot td { font-weight:700; }
+  .tabela { overflow-x:auto; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Hub RTC · Regime Regular</h1>
+  <p class="aviso">Simulação feita com o motor oficial da Receita Federal (CBS, IBS e Imposto Seletivo). Não substitui a emissão nem a autorização de documentos fiscais.</p>
+
+  <section id="servidor" hidden>
+    <h2>Servidor da API</h2>
+    <label for="api">Endereço do Hub (ex.: https://hub.suaempresa.com.br)</label>
+    <input id="api" type="url" placeholder="https://...">
+  </section>
+
+  <form id="formulario">
+    <section>
+      <h2>Operação</h2>
+      <div class="grade">
+        <div><label for="data">Data do fato gerador</label><input id="data" type="date" required></div>
+        <div><label for="uf">UF</label><input id="uf" maxlength="2" value="SP" required></div>
+        <div><label for="municipio">Município (IBGE)</label><input id="municipio" inputmode="numeric" value="3550308" required></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Itens</h2>
+      <div id="itens"></div>
+      <button type="button" id="novo-item">+ Adicionar item</button>
+    </section>
+
+    <button class="principal" id="calcular" type="submit">Calcular</button>
+    <div id="erro" role="alert"></div>
+  </form>
+
+  <section id="resultado" hidden>
+    <h2>Resultado</h2>
+    <div class="tabela">
+      <table>
+        <thead><tr><th>Item</th><th>Base</th><th>CBS</th><th>IBS</th><th>IS</th></tr></thead>
+        <tbody id="linhas"></tbody>
+        <tfoot><tr id="totais"></tr></tfoot>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+// Quando a tela é servida pelo próprio Hub, a API é o mesmo endereço.
+// No GitHub Pages (outro domínio) o endereço do Hub é informado e lembrado no navegador.
+const noPages = location.hostname.endsWith("github.io");
+const campoApi = document.getElementById("api");
+const guardar = (chave, valor) => { try { localStorage.setItem(chave, valor); } catch {} };
+const lembrar = (chave) => { try { return localStorage.getItem(chave) || ""; } catch { return ""; } };
+
+if (noPages) {
+  document.getElementById("servidor").hidden = false;
+  campoApi.value = new URLSearchParams(location.search).get("api") || lembrar("api");
+  campoApi.required = true;
+}
+const baseApi = () => (noPages ? campoApi.value.trim().replace(/\/$/, "") : "");
+
+const hoje = new Date();
+document.getElementById("data").value = hoje.toISOString().slice(0, 10);
+
+const itens = document.getElementById("itens");
+function novoItem(valores = {}) {
+  const linha = document.createElement("div");
+  linha.className = "item";
+  linha.innerHTML = `
+    <div><label>Nº</label><input class="numero" inputmode="numeric" required></div>
+    <div><label>CST</label><input class="cst" maxlength="3" value="000" required></div>
+    <div><label>Class. trib.</label><input class="classificacao" maxlength="6" value="000001" required></div>
+    <div><label>Base (R$)</label><input class="base" inputmode="decimal" placeholder="100.00" required></div>
+    <div><label>NCM (opcional)</label><input class="ncm" maxlength="8"></div>
+    <button type="button" class="remover" title="Remover item" aria-label="Remover item">×</button>`;
+  linha.querySelector(".numero").value = valores.numero ?? itens.children.length + 1;
+  linha.querySelector(".remover").onclick = () => { if (itens.children.length > 1) linha.remove(); };
+  itens.appendChild(linha);
+}
+document.getElementById("novo-item").onclick = () => novoItem();
+novoItem();
+
+function montarPedido() {
+  const lista = [...itens.children].map((l) => {
+    const item = {
+      numero: Number(l.querySelector(".numero").value),
+      cst: l.querySelector(".cst").value.trim(),
+      classificacao_tributaria: l.querySelector(".classificacao").value.trim(),
+      base_calculo: l.querySelector(".base").value.trim().replace(",", "."),
+    };
+    const ncm = l.querySelector(".ncm").value.trim();
+    if (ncm) item.ncm = ncm;
+    return item;
+  });
+  return {
+    fato_gerador: `${document.getElementById("data").value}T12:00:00-03:00`,
+    uf: document.getElementById("uf").value.trim().toUpperCase(),
+    municipio: Number(document.getElementById("municipio").value),
+    itens: lista,
+  };
+}
+
+const dinheiro = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const celulas = (valores) => valores.map((v, i) => `<td>${i === 0 || v === "" ? v : dinheiro(v)}</td>`).join("");
+
+function mensagemDeErro(corpo) {
+  if (corpo && corpo.erro) return corpo.erro;
+  if (corpo && Array.isArray(corpo.detail)) return corpo.detail.map((d) => `${d.loc.slice(1).join(".")}: ${d.msg}`).join("\n");
+  return "Não foi possível calcular.";
+}
+
+document.getElementById("formulario").onsubmit = async (evento) => {
+  evento.preventDefault();
+  const botao = document.getElementById("calcular");
+  const erro = document.getElementById("erro");
+  erro.textContent = "";
+  botao.disabled = true;
+  try {
+    if (noPages) guardar("api", campoApi.value.trim());
+    const resposta = await fetch(`${baseApi()}/api/calculos/regime-regular`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(montarPedido()),
+    });
+    const corpo = await resposta.json().catch(() => null);
+    if (!resposta.ok) throw new Error(mensagemDeErro(corpo));
+    document.getElementById("linhas").innerHTML = corpo.itens
+      .map((i) => `<tr>${celulas([i.numero, i.base_calculo, i.cbs, i.ibs, i.imposto_seletivo])}</tr>`).join("");
+    const t = corpo.totais;
+    document.getElementById("totais").innerHTML = celulas(["Total", "", t.cbs, t.ibs, t.imposto_seletivo]);
+    document.getElementById("resultado").hidden = false;
+  } catch (e) {
+    erro.textContent = e instanceof TypeError ? "Não consegui falar com o servidor do Hub. Confira o endereço e se ele está no ar." : e.message;
+    document.getElementById("resultado").hidden = true;
+  } finally {
+    botao.disabled = false;
+  }
+};
+</script>
+</body>
+</html>

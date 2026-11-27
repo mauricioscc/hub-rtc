@@ -28,3 +28,12 @@ def test_host_e_portas_do_servidor_da_empresa_vem_do_ambiente() -> None:
     assert enderecos.regime_regular == "http://docker.empresa.local:9081"
     assert enderecos.simples_nacional == "http://docker.empresa.local:9082"
     assert enderecos.gerador_danfse == "http://docker.empresa.local:9083"
+
+
+def test_url_completa_do_motor_tem_prioridade_sobre_host_e_porta() -> None:
+    ambiente = {"HUB_RTC_HOST": "servidor", "URL_REGIME_REGULAR": "http://regime-regular:8080"}
+
+    enderecos = EnderecosMotores.do_ambiente(ambiente)
+
+    assert enderecos.regime_regular == "http://regime-regular:8080"
+    assert enderecos.simples_nacional == "http://servidor:8082"

@@ -7,12 +7,15 @@ name = "hub-rtc"
 version = "0.0.1"
 description = "Hub interno que integra as calculadoras da Reforma Tributária da Receita Federal"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "httpx>=0.28",
+]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
-    "httpx>=0.28",
     "ruff>=0.8",
     "mypy>=1.13",
     "import-linter>=2.1",
@@ -20,6 +23,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+hub_rtc = ["entrada/web/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -34,6 +40,12 @@ target-version = "py312"
 # E/F/W: erros básicos · N: nomes (PEP 8) · B: armadilhas · C90: complexidade
 # SIM/RET: simplificação · UP: Python moderno · PL: boas práticas · I: imports
 select = ["E", "F", "W", "N", "B", "C90", "SIM", "RET", "UP", "PL", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Convenção do projeto: erros em português começam com "Erro" (ErroDoHub).
+"src/hub_rtc/dominio/erros.py" = ["N818"]
+# Nos testes, códigos HTTP e números de exemplo são autoexplicativos.
+"tests/**" = ["PLR2004"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 6

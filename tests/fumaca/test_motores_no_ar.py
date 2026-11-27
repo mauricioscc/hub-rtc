@@ -6,6 +6,7 @@ Rodar com: pytest -m fumaca
 """
 
 import os
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -40,3 +41,30 @@ def test_regime_regular_consulta_o_banco_oficial() -> None:
 
     assert resposta.status_code == httpx.codes.OK
     assert resposta.json(), "a lista de CST veio vazia: o banco oficial não foi carregado"
+
+
+def test_hub_calcula_com_o_motor_real() -> None:
+    """Ponta a ponta: Hub -> motor oficial. Os totais do Hub fecham com a soma dos itens."""
+    pedido = {
+        "fato_gerador": "2026-10-20T10:00:00-03:00",
+        "municipio": 3550308,
+        "uf": "SP",
+        "itens": [
+            {
+                "numero": 1,
+                "cst": "000",
+                "classificacao_tributaria": "000001",
+                "base_calculo": "100.00",
+                "ncm": "84713012",
+            }
+        ],
+    }
+
+    resposta = httpx.post(
+        f"{ENDERECOS.hub}/api/calculos/regime-regular", json=pedido, timeout=TEMPO_LIMITE_SEGUNDOS
+    )
+
+    assert resposta.status_code == httpx.codes.OK, resposta.text
+    corpo = resposta.json()
+    assert Decimal(corpo["totais"]["cbs"]) > 0
+    assert corpo["totais"]["cbs"] == corpo["itens"][0]["cbs"]

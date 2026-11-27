@@ -1,0 +1,124 @@
+"""API HTTP do Hub (FastAPI). Traduz JSON para o domínio e erros do domínio para HTTP."""
+
+from datetime import datetime
+from decimal import Decimal
+from pathlib import Path
+from typing import Protocol
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from hub_rtc.dominio.erros import ErroDoHub, MotorIndisponivel
+from hub_rtc.dominio.operacao import ItemOperacao, Operacao
+from hub_rtc.dominio.resultado import ResultadoCalculo
+
+DIRETORIO_WEB = Path(__file__).parent / "web"
+STATUS_ENTIDADE_INVALIDA = 422
+STATUS_INDISPONIVEL = 503
+
+
+class CasoDeUsoCalcular(Protocol):
+    def executar(self, operacao: Operacao) -> ResultadoCalculo: ...
+
+
+class ItemPedido(BaseModel):
+    numero: int
+    cst: str
+    classificacao_tributaria: str
+    base_calculo: Decimal
+    ncm: str | None = None
+
+
+class PedidoCalculo(BaseModel):
+    fato_gerador: datetime
+    municipio: int
+    uf: str
+    tipo_documento: int | None = None
+    itens: list[ItemPedido]
+
+    def para_dominio(self) -> Operacao:
+        return Operacao(
+            fato_gerador=self.fato_gerador,
+            municipio=self.municipio,
+            uf=self.uf,
+            tipo_documento=self.tipo_documento,
+            itens=tuple(ItemOperacao(**item.model_dump()) for item in self.itens),
+        )
+
+
+class ItemResposta(BaseModel):
+    numero: int
+    base_calculo: Decimal
+    cbs: Decimal
+    ibs: Decimal
+    ibs_uf: Decimal
+    ibs_municipal: Decimal
+    imposto_seletivo: Decimal
+
+
+class TotaisResposta(BaseModel):
+    cbs: Decimal
+    ibs: Decimal
+    imposto_seletivo: Decimal
+
+
+class RespostaCalculo(BaseModel):
+    itens: list[ItemResposta]
+    totais: TotaisResposta
+
+    @classmethod
+    def do_dominio(cls, resultado: ResultadoCalculo) -> "RespostaCalculo":
+        return cls(
+            itens=[
+                ItemResposta(
+                    numero=item.numero,
+                    base_calculo=item.base_calculo_ibs_cbs,
+                    cbs=item.cbs,
+                    ibs=item.ibs,
+                    ibs_uf=item.ibs_uf,
+                    ibs_municipal=item.ibs_municipal,
+                    imposto_seletivo=item.imposto_seletivo,
+                )
+                for item in resultado.itens
+            ],
+            totais=TotaisResposta(
+                cbs=resultado.total_cbs,
+                ibs=resultado.total_ibs,
+                imposto_seletivo=resultado.total_imposto_seletivo,
+            ),
+        )
+
+
+def _responder_erro_do_hub(_: Request, erro: Exception) -> JSONResponse:
+    status = (
+        STATUS_INDISPONIVEL if isinstance(erro, MotorIndisponivel) else STATUS_ENTIDADE_INVALIDA
+    )
+    return JSONResponse(status_code=status, content={"erro": str(erro)})
+
+
+def criar_app(caso_de_uso: CasoDeUsoCalcular, origens_permitidas: tuple[str, ...] = ()) -> FastAPI:
+    app = FastAPI(title="Hub RTC", version="0.1.0")
+    if origens_permitidas:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(origens_permitidas),
+            allow_methods=["GET", "POST"],
+            allow_headers=["Content-Type"],
+        )
+    app.add_exception_handler(ErroDoHub, _responder_erro_do_hub)
+
+    @app.get("/api/saude")
+    def saude() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.post("/api/calculos/regime-regular")
+    def calcular(pedido: PedidoCalculo) -> RespostaCalculo:
+        resultado = caso_de_uso.executar(pedido.para_dominio())
+        return RespostaCalculo.do_dominio(resultado)
+
+    # Por último: as rotas /api têm prioridade sobre os arquivos da tela.
+    app.mount("/", StaticFiles(directory=DIRETORIO_WEB, html=True), name="web")
+    return app
