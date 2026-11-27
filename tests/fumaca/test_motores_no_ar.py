@@ -68,3 +68,15 @@ def test_hub_calcula_com_o_motor_real() -> None:
     corpo = resposta.json()
     assert Decimal(corpo["totais"]["cbs"]) > 0
     assert corpo["totais"]["cbs"] == corpo["itens"][0]["cbs"]
+
+
+def test_hub_lista_situacoes_tributarias_com_classificacoes() -> None:
+    resposta = httpx.get(
+        f"{ENDERECOS.hub}/api/situacoes-tributarias",
+        params={"data": "2026-10-20"},
+        timeout=TEMPO_LIMITE_SEGUNDOS,
+    )
+
+    assert resposta.status_code == httpx.codes.OK
+    integral = next(s for s in resposta.json() if s["codigo"] == "000")
+    assert "000001" in [c["codigo"] for c in integral["classificacoes"]]

@@ -1,20 +1,32 @@
 """Adaptador HTTP da Calculadora Regime Regular (motor oficial da Receita Federal)."""
 
 from collections.abc import Mapping
+from datetime import date
 from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
 import httpx
 
+from hub_rtc.dominio.catalogo import ClassificacaoTributaria, SituacaoTributaria
 from hub_rtc.dominio.erros import MotorIndisponivel, MotorRejeitouOperacao
 from hub_rtc.dominio.operacao import ItemOperacao, Operacao
-from hub_rtc.dominio.resultado import ResultadoCalculo, TributosDoItem
+from hub_rtc.dominio.resultado import MemoriaDeCalculo, ResultadoCalculo, TributosDoItem
 
 CAMINHO_CALCULO = "/api/calculadora/regime-geral"
+CAMINHO_SITUACOES = "/api/calculadora/dados-abertos/situacoes-tributarias/cbs-ibs"
 VERSAO_DO_FORMATO = "0.0.1"
 PRIMEIRO_ERRO_DO_CLIENTE = 400
 PRIMEIRO_ERRO_DO_SERVIDOR = 500
+
+Json = Mapping[str, Any]
+
+# (nome mostrado, grupo na resposta, chave na memória agrupada do motor)
+TRIBUTOS_COM_MEMORIA = (
+    ("CBS", "gCBS", "cbs"),
+    ("IBS (UF)", "gIBSUF", "ibsUF"),
+    ("IBS (município)", "gIBSMun", "ibsMun"),
+)
 
 
 def _item_para_json(item: ItemOperacao) -> dict[str, Any]:
@@ -43,8 +55,8 @@ def _operacao_para_json(operacao: Operacao) -> dict[str, Any]:
     return json_operacao
 
 
-def _valor(no: Mapping[str, Any] | None, *caminho: str) -> Decimal:
-    """Lê um valor monetário aninhado; ausente significa que o motor não calculou (zero)."""
+def _valor(no: Json | None, *caminho: str) -> Decimal:
+    """Lê um valor numérico aninhado; ausente significa que o motor não calculou (zero)."""
     for chave in caminho:
         if no is None:
             return Decimal(0)
@@ -52,7 +64,36 @@ def _valor(no: Mapping[str, Any] | None, *caminho: str) -> Decimal:
     return Decimal(0) if no is None else Decimal(str(no))
 
 
-def _objeto_para_tributos(objeto: Mapping[str, Any]) -> TributosDoItem:
+def _aliquota_efetiva(tributo: Json | None, chave_aliquota: str) -> Decimal:
+    """Alíquota em %: a efetiva, quando há redução; senão a cheia."""
+    reducao = (tributo or {}).get("gRed") or {}
+    if "pAliqEfet" in reducao:
+        return _valor(reducao, "pAliqEfet")
+    return _valor(tributo, chave_aliquota)
+
+
+def _memorias(calculo: Json, grupo: Json) -> tuple[MemoriaDeCalculo, ...]:
+    """Reúne os textos de memória de cálculo, juntando os tributos que têm o mesmo texto.
+
+    O motor ora traz o texto dentro de cada tributo, ora agrupado em IBSCBS.memoriaCalculo.
+    """
+    agrupadas = (calculo.get("IBSCBS") or {}).get("memoriaCalculo") or {}
+    nomes_por_texto: dict[str, list[str]] = {}
+    for nome, chave_grupo, chave_agrupada in TRIBUTOS_COM_MEMORIA:
+        texto = (grupo.get(chave_grupo) or {}).get("memoriaCalculo") or agrupadas.get(
+            chave_agrupada
+        )
+        if texto:
+            nomes_por_texto.setdefault(texto, []).append(nome)
+    seletivo = (calculo.get("IS") or {}).get("memoriaCalculo")
+    if seletivo:
+        nomes_por_texto.setdefault(seletivo, []).append("Imposto Seletivo")
+    return tuple(
+        MemoriaDeCalculo(", ".join(nomes), texto) for texto, nomes in nomes_por_texto.items()
+    )
+
+
+def _objeto_para_tributos(objeto: Json) -> TributosDoItem:
     calculo = objeto.get("tribCalc") or {}
     grupo = (calculo.get("IBSCBS") or {}).get("gIBSCBS") or {}
     return TributosDoItem(
@@ -62,6 +103,21 @@ def _objeto_para_tributos(objeto: Mapping[str, Any]) -> TributosDoItem:
         ibs_uf=_valor(grupo, "gIBSUF", "vIBSUF"),
         ibs_municipal=_valor(grupo, "gIBSMun", "vIBSMun"),
         imposto_seletivo=_valor(calculo, "IS", "vIS"),
+        aliquota_cbs=_aliquota_efetiva(grupo.get("gCBS"), "pCBS"),
+        aliquota_ibs_uf=_aliquota_efetiva(grupo.get("gIBSUF"), "pIBSUF"),
+        aliquota_ibs_municipal=_aliquota_efetiva(grupo.get("gIBSMun"), "pIBSMun"),
+        memorias_de_calculo=_memorias(calculo, grupo),
+    )
+
+
+def _situacao_do_motor(situacao: Json) -> SituacaoTributaria:
+    return SituacaoTributaria(
+        codigo=situacao["codigo"],
+        descricao=situacao["descricao"],
+        classificacoes=tuple(
+            ClassificacaoTributaria(c["codigo"], c["descricao"])
+            for c in situacao.get("classificacoesTributarias", [])
+        ),
     )
 
 
@@ -80,17 +136,27 @@ def _mensagem_de_recusa(resposta: httpx.Response) -> str:
 
 
 class MotorRegimeRegular:
+    """Cumpre as portas de cálculo e de catálogo conversando com o mesmo motor."""
+
     def __init__(self, cliente: httpx.Client) -> None:
         self._cliente = cliente
 
     def calcular(self, operacao: Operacao) -> ResultadoCalculo:
-        resposta = self._enviar(_operacao_para_json(operacao))
+        resposta = self._requisitar(
+            lambda: self._cliente.post(CAMINHO_CALCULO, json=_operacao_para_json(operacao))
+        )
         objetos = resposta.json().get("objetos", [])
         return ResultadoCalculo(itens=tuple(_objeto_para_tributos(o) for o in objetos))
 
-    def _enviar(self, corpo: dict[str, Any]) -> httpx.Response:
+    def situacoes_tributarias(self, data: date) -> tuple[SituacaoTributaria, ...]:
+        resposta = self._requisitar(
+            lambda: self._cliente.get(CAMINHO_SITUACOES, params={"data": data.isoformat()})
+        )
+        return tuple(_situacao_do_motor(s) for s in resposta.json())
+
+    def _requisitar(self, enviar: Any) -> httpx.Response:
         try:
-            resposta = self._cliente.post(CAMINHO_CALCULO, json=corpo)
+            resposta: httpx.Response = enviar()
         except httpx.TransportError as erro:
             raise MotorIndisponivel("o motor Regime Regular não respondeu") from erro
         if resposta.status_code >= PRIMEIRO_ERRO_DO_SERVIDOR:

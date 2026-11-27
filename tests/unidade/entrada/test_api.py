@@ -1,12 +1,14 @@
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from hub_rtc.dominio.catalogo import ClassificacaoTributaria, SituacaoTributaria
 from hub_rtc.dominio.erros import ErroDoHub, MotorIndisponivel, MotorRejeitouOperacao
 from hub_rtc.dominio.operacao import Operacao
-from hub_rtc.dominio.resultado import ResultadoCalculo, TributosDoItem
+from hub_rtc.dominio.resultado import MemoriaDeCalculo, ResultadoCalculo, TributosDoItem
 from hub_rtc.entrada.api import criar_app
 
 PEDIDO: dict[str, Any] = {
@@ -35,12 +37,26 @@ class CasoDeUsoFalso:
             ibs_uf=Decimal("0.05"),
             ibs_municipal=Decimal("0.05"),
             imposto_seletivo=Decimal("0"),
+            aliquota_cbs=Decimal("0.88"),
+            aliquota_ibs_uf=Decimal("0.05"),
+            aliquota_ibs_municipal=Decimal("0.05"),
+            memorias_de_calculo=(MemoriaDeCalculo("CBS", "explicação da CBS"),),
         )
         return ResultadoCalculo(itens=(item,))
 
 
-def cliente(caso_de_uso: CasoDeUsoFalso) -> TestClient:
-    return TestClient(criar_app(caso_de_uso))
+class ConsultaFalsa:
+    def __init__(self) -> None:
+        self.data_pedida: date | None = None
+
+    def executar(self, data: date) -> tuple[SituacaoTributaria, ...]:
+        self.data_pedida = data
+        classificacao = ClassificacaoTributaria("000001", "Tributada integralmente")
+        return (SituacaoTributaria("000", "Tributação integral", (classificacao,)),)
+
+
+def cliente(caso_de_uso: CasoDeUsoFalso, consulta: ConsultaFalsa | None = None) -> TestClient:
+    return TestClient(criar_app(caso_de_uso, consulta or ConsultaFalsa()))
 
 
 def test_calcula_e_devolve_itens_e_totais_como_texto() -> None:
@@ -95,3 +111,45 @@ def test_serve_a_tela_web_na_raiz() -> None:
 
     assert resposta.status_code == 200
     assert "Hub RTC" in resposta.text
+
+
+def test_resposta_traz_aliquotas_e_memoria_de_calculo() -> None:
+    resposta = cliente(CasoDeUsoFalso()).post("/api/calculos/regime-regular", json=PEDIDO)
+
+    item = resposta.json()["itens"][0]
+    assert item["aliquota_cbs"] == "0.88"
+    assert item["aliquota_ibs_uf"] == "0.05"
+    assert item["aliquota_ibs_municipal"] == "0.05"
+    assert item["memorias"] == [{"tributos": "CBS", "texto": "explicação da CBS"}]
+
+
+def test_lista_situacoes_tributarias_na_data_pedida() -> None:
+    consulta = ConsultaFalsa()
+
+    resposta = cliente(CasoDeUsoFalso(), consulta).get(
+        "/api/situacoes-tributarias", params={"data": "2026-10-20"}
+    )
+
+    assert resposta.status_code == 200
+    assert consulta.data_pedida == date(2026, 10, 20)
+    assert resposta.json() == [
+        {
+            "codigo": "000",
+            "descricao": "Tributação integral",
+            "classificacoes": [{"codigo": "000001", "descricao": "Tributada integralmente"}],
+        }
+    ]
+
+
+def test_situacoes_sem_data_usam_hoje() -> None:
+    consulta = ConsultaFalsa()
+
+    cliente(CasoDeUsoFalso(), consulta).get("/api/situacoes-tributarias")
+
+    assert consulta.data_pedida == date.today()
+
+
+def test_data_invalida_nas_situacoes_vira_422() -> None:
+    resposta = cliente(CasoDeUsoFalso()).get("/api/situacoes-tributarias", params={"data": "ontem"})
+
+    assert resposta.status_code == 422

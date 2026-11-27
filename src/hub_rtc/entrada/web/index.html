@@ -5,31 +5,45 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hub RTC</title>
 <style>
-  :root { --fundo:#f6f7f9; --card:#fff; --texto:#1c2430; --suave:#5b6675; --borda:#d8dde5; --marca:#0b5cab; --erro:#b42318; }
+  :root { --fundo:#f3f5f8; --card:#fff; --texto:#1c2430; --suave:#5b6675; --borda:#d8dde5; --marca:#0b5cab; --marca-fraca:#e6f0fb; --sobre-marca:#fff; --erro:#b42318; }
   @media (prefers-color-scheme: dark) {
-    :root { --fundo:#14181f; --card:#1d232d; --texto:#e8ecf2; --suave:#9aa6b6; --borda:#2f3846; --marca:#5aa7f0; --erro:#ff8a80; }
+    :root { --fundo:#14181f; --card:#1d232d; --texto:#e8ecf2; --suave:#9aa6b6; --borda:#2f3846; --marca:#5aa7f0; --marca-fraca:#1f3550; --sobre-marca:#0b1a2b; --erro:#ff8a80; }
   }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--fundo); color:var(--texto); font:16px/1.45 system-ui, sans-serif; }
-  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
   h1 { font-size: 1.4rem; margin: 0 0 4px; }
-  .aviso { color: var(--suave); font-size: .85rem; margin: 0 0 20px; }
+  .aviso { color: var(--suave); font-size: .85rem; margin: 0 0 16px; }
   section { background:var(--card); border:1px solid var(--borda); border-radius:10px; padding:16px; margin-bottom:16px; }
   h2 { font-size: 1rem; margin: 0 0 12px; }
-  .grade { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:12px; }
-  label { display:block; font-size:.8rem; color:var(--suave); }
-  input { width:100%; padding:8px; border:1px solid var(--borda); border-radius:6px; background:var(--fundo); color:var(--texto); font:inherit; }
-  .item { display:grid; grid-template-columns: 60px 80px 110px 1fr 1fr 36px; gap:8px; align-items:end; margin-bottom:8px; }
-  @media (max-width: 640px) { .item { grid-template-columns: 1fr 1fr; } }
-  button { padding:9px 14px; border-radius:6px; border:1px solid var(--borda); background:var(--card); color:var(--texto); font:inherit; cursor:pointer; }
-  button.principal { background:var(--marca); border-color:var(--marca); color:#fff; font-weight:600; }
+  .colunas { display:grid; gap:16px; align-items:start; }
+  @media (min-width: 960px) { .colunas { grid-template-columns: minmax(380px, 5fr) 7fr; } #painel-resultado { position: sticky; top: 16px; } }
+  .grade { display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:12px; }
+  label { display:block; font-size:.78rem; color:var(--suave); margin-bottom:2px; }
+  input, select { width:100%; padding:8px; border:1px solid var(--borda); border-radius:6px; background:var(--fundo); color:var(--texto); font:inherit; text-overflow:ellipsis; }
+  .item { border:1px solid var(--borda); border-radius:8px; padding:12px; margin-bottom:10px; display:grid; grid-template-columns: 64px 1fr 1fr; gap:10px; position:relative; }
+  .item .larga { grid-column: 1 / -1; }
+  .item .base-campo { grid-column: 1 / 3; }
+  .item .cst-campo { grid-column: 2 / -1; padding-right:26px; }
+  .item .remover { position:absolute; top:6px; right:6px; padding:0 8px; line-height:1.4; }
+  button { padding:8px 14px; border-radius:6px; border:1px solid var(--borda); background:var(--card); color:var(--texto); font:inherit; cursor:pointer; }
+  button.principal { background:var(--marca); border-color:var(--marca); color:var(--sobre-marca); font-weight:600; width:100%; padding:11px; }
   button:disabled { opacity:.6; cursor:wait; }
+  .exemplos { display:flex; flex-wrap:wrap; gap:8px; }
+  .exemplos button { background:var(--marca-fraca); border-color:transparent; font-size:.85rem; }
   #erro { color:var(--erro); margin-top:12px; white-space:pre-wrap; }
+  #aviso-catalogo { color:var(--erro); font-size:.85rem; margin:0 0 10px; }
   table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
-  th, td { padding:6px 8px; text-align:right; border-bottom:1px solid var(--borda); }
+  th, td { padding:8px; text-align:right; border-bottom:1px solid var(--borda); vertical-align:top; }
   th:first-child, td:first-child { text-align:left; }
-  tfoot td { font-weight:700; }
+  td small { display:block; color:var(--suave); font-size:.75rem; }
+  tfoot td { font-weight:700; border-bottom:0; }
   .tabela { overflow-x:auto; }
+  details { border:1px solid var(--borda); border-radius:8px; padding:8px 12px; margin-top:10px; }
+  summary { cursor:pointer; font-weight:600; }
+  .memoria { margin:8px 0 0; font-size:.88rem; }
+  .memoria b { color:var(--marca); }
+  .vazio { color:var(--suave); text-align:center; padding:32px 8px; }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -44,80 +58,142 @@
     <input id="api" type="url" placeholder="https://...">
   </section>
 
-  <form id="formulario">
-    <section>
-      <h2>Operação</h2>
-      <div class="grade">
-        <div><label for="data">Data do fato gerador</label><input id="data" type="date" required></div>
-        <div><label for="uf">UF</label><input id="uf" maxlength="2" value="RJ" required></div>
-        <div><label for="municipio">Município (IBGE)</label><input id="municipio" inputmode="numeric" value="3304557" required></div>
-      </div>
-    </section>
-
-    <section>
-      <h2>Itens</h2>
-      <div id="itens"></div>
-      <button type="button" id="novo-item">+ Adicionar item</button>
-    </section>
-
-    <button class="principal" id="calcular" type="submit">Calcular</button>
-    <div id="erro" role="alert"></div>
-  </form>
-
-  <section id="resultado" hidden>
-    <h2>Resultado</h2>
-    <div class="tabela">
-      <table>
-        <thead><tr><th>Item</th><th>Base</th><th>CBS</th><th>IBS</th><th>IS</th></tr></thead>
-        <tbody id="linhas"></tbody>
-        <tfoot><tr id="totais"></tr></tfoot>
-      </table>
-    </div>
+  <section>
+    <h2>Exemplos prontos</h2>
+    <div class="exemplos" id="exemplos"></div>
   </section>
+
+  <div class="colunas">
+    <form id="formulario">
+      <section>
+        <h2>Operação</h2>
+        <div class="grade">
+          <div><label for="data">Data do fato gerador</label><input id="data" type="date" required></div>
+          <div><label for="uf">UF</label><input id="uf" maxlength="2" value="RJ" required></div>
+          <div><label for="municipio">Município (IBGE)</label><input id="municipio" inputmode="numeric" value="3304557" required></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Itens</h2>
+        <p id="aviso-catalogo" hidden></p>
+        <div id="itens"></div>
+        <button type="button" id="novo-item">+ Adicionar item</button>
+      </section>
+
+      <button class="principal" id="calcular" type="submit">Calcular</button>
+      <div id="erro" role="alert"></div>
+    </form>
+
+    <div id="painel-resultado">
+      <section>
+        <h2>Resultado</h2>
+        <div id="vazio" class="vazio">Preencha a operação, ou escolha um exemplo, e clique em Calcular.</div>
+        <div id="resultado" hidden>
+          <div class="tabela">
+            <table>
+              <thead><tr><th>Item</th><th>Base</th><th>CBS</th><th>IBS</th><th>IS</th></tr></thead>
+              <tbody id="linhas"></tbody>
+              <tfoot><tr id="totais"></tr></tfoot>
+            </table>
+          </div>
+          <div id="memorias"></div>
+        </div>
+      </section>
+    </div>
+  </div>
 </main>
 
 <script>
 // Quando a tela é servida pelo próprio Hub, a API é o mesmo endereço.
 // No GitHub Pages (outro domínio) o endereço do Hub é informado e lembrado no navegador.
 const noPages = location.hostname.endsWith("github.io");
-const campoApi = document.getElementById("api");
+const $ = (id) => document.getElementById(id);
 const guardar = (chave, valor) => { try { localStorage.setItem(chave, valor); } catch {} };
 const lembrar = (chave) => { try { return localStorage.getItem(chave) || ""; } catch { return ""; } };
+const baseApi = () => (noPages ? $("api").value.trim().replace(/\/$/, "") : "");
 
-if (noPages) {
-  document.getElementById("servidor").hidden = false;
-  campoApi.value = new URLSearchParams(location.search).get("api") || lembrar("api");
-  campoApi.required = true;
+// Cria elementos sem interpretar HTML: o texto vindo do motor nunca vira marcação.
+function el(tag, props = {}, ...filhos) {
+  const e = Object.assign(document.createElement(tag), props);
+  e.append(...filhos);
+  return e;
 }
-const baseApi = () => (noPages ? campoApi.value.trim().replace(/\/$/, "") : "");
 
-const hoje = new Date();
-document.getElementById("data").value = hoje.toISOString().slice(0, 10);
+const EXEMPLOS = [
+  { nome: "Tributação integral", itens: [["000", "000001", "100.00"]] },
+  { nome: "Medicamento (redução de 60%)", itens: [["200", "200032", "100.00"]] },
+  { nome: "Bares e restaurantes (redução de 40%)", itens: [["200", "200047", "100.00"]] },
+  { nome: "Isenção", itens: [["400", "400001", "100.00"]] },
+  { nome: "Imunidade", itens: [["410", "410001", "100.00"]] },
+  { nome: "Vários itens", itens: [["000", "000001", "250.55"], ["200", "200032", "80.00"], ["400", "400001", "40.00"]] },
+];
 
-const itens = document.getElementById("itens");
-function novoItem(valores = {}) {
-  const linha = document.createElement("div");
-  linha.className = "item";
-  linha.innerHTML = `
-    <div><label>Nº</label><input class="numero" inputmode="numeric" required></div>
-    <div><label>CST</label><input class="cst" maxlength="3" value="000" required></div>
-    <div><label>Class. trib.</label><input class="classificacao" maxlength="6" value="000001" required></div>
-    <div><label>Base (R$)</label><input class="base" inputmode="decimal" placeholder="100.00" required></div>
-    <div><label>NCM (opcional)</label><input class="ncm" maxlength="8"></div>
-    <button type="button" class="remover" title="Remover item" aria-label="Remover item">×</button>`;
-  linha.querySelector(".numero").value = valores.numero ?? itens.children.length + 1;
-  linha.querySelector(".remover").onclick = () => { if (itens.children.length > 1) linha.remove(); };
-  itens.appendChild(linha);
+let catalogo = [];
+
+// ---------- catálogo (CST e classificação) ----------
+function opcoes(select, lista, escolhido) {
+  select.replaceChildren(el("option", { value: "", textContent: "Selecione…" }));
+  for (const o of lista) select.append(el("option", { value: o.codigo, textContent: `${o.codigo} · ${o.descricao}`, title: o.descricao }));
+  if (lista.some((o) => o.codigo === escolhido)) select.value = escolhido;
 }
-document.getElementById("novo-item").onclick = () => novoItem();
-novoItem();
+function preencherClassificacoes(item, escolhida) {
+  const cst = catalogo.find((s) => s.codigo === item.querySelector(".cst").value);
+  opcoes(item.querySelector(".classificacao"), cst ? cst.classificacoes : [], escolhida);
+}
+function preencherItem(item, cst, classificacao) {
+  opcoes(item.querySelector(".cst"), catalogo, cst);
+  preencherClassificacoes(item, classificacao);
+}
+async function carregarCatalogo() {
+  const aviso = $("aviso-catalogo");
+  aviso.hidden = true;
+  try {
+    const resposta = await fetch(`${baseApi()}/api/situacoes-tributarias?data=${$("data").value}`);
+    if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
+    catalogo = await resposta.json();
+  } catch {
+    catalogo = [];
+    aviso.textContent = "Não consegui carregar as situações tributárias. Confira o endereço do Hub e se ele está no ar.";
+    aviso.hidden = false;
+  }
+  for (const item of $("itens").children) {
+    preencherItem(item, item.querySelector(".cst").value, item.querySelector(".classificacao").value);
+  }
+}
 
+// ---------- itens ----------
+function novoItem({ cst = "", classificacao = "", base = "" } = {}) {
+  const numero = el("input", { className: "numero", inputMode: "numeric", required: true, value: $("itens").children.length + 1 });
+  const selCst = el("select", { className: "cst", required: true });
+  const selClass = el("select", { className: "classificacao", required: true });
+  const campoBase = el("input", { className: "base", inputMode: "decimal", placeholder: "100.00", required: true, value: base });
+  const ncm = el("input", { className: "ncm", maxLength: 8 });
+  const remover = el("button", { type: "button", className: "remover", title: "Remover item", textContent: "×" });
+  const campo = (rotulo, controle, classe = "") => el("div", { className: classe }, el("label", { textContent: rotulo }), controle);
+  const item = el("div", { className: "item" },
+    campo("Nº", numero), campo("Situação tributária (CST)", selCst, "cst-campo"),
+    campo("Classificação tributária", selClass, "larga"),
+    campo("Base de cálculo (R$)", campoBase, "base-campo"), campo("NCM (opcional)", ncm), remover);
+  selCst.onchange = () => preencherClassificacoes(item, "");
+  remover.onclick = () => { if ($("itens").children.length > 1) item.remove(); };
+  $("itens").append(item);
+  preencherItem(item, cst, classificacao);
+}
+
+function aplicarExemplo(exemplo) {
+  $("itens").replaceChildren();
+  for (const [cst, classificacao, base] of exemplo.itens) novoItem({ cst, classificacao, base });
+  $("erro").textContent = "";
+}
+
+// ---------- cálculo ----------
 function montarPedido() {
-  const lista = [...itens.children].map((l) => {
+  const itens = [...$("itens").children].map((l) => {
     const item = {
       numero: Number(l.querySelector(".numero").value),
-      cst: l.querySelector(".cst").value.trim(),
-      classificacao_tributaria: l.querySelector(".classificacao").value.trim(),
+      cst: l.querySelector(".cst").value,
+      classificacao_tributaria: l.querySelector(".classificacao").value,
       base_calculo: l.querySelector(".base").value.trim().replace(",", "."),
     };
     const ncm = l.querySelector(".ncm").value.trim();
@@ -125,15 +201,36 @@ function montarPedido() {
     return item;
   });
   return {
-    fato_gerador: `${document.getElementById("data").value}T12:00:00-03:00`,
-    uf: document.getElementById("uf").value.trim().toUpperCase(),
-    municipio: Number(document.getElementById("municipio").value),
-    itens: lista,
+    fato_gerador: `${$("data").value}T12:00:00-03:00`,
+    uf: $("uf").value.trim().toUpperCase(),
+    municipio: Number(String($("municipio").value).trim()),
+    itens,
   };
 }
 
 const dinheiro = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const celulas = (valores) => valores.map((v, i) => `<td>${i === 0 || v === "" ? v : dinheiro(v)}</td>`).join("");
+
+function celulaValor(valor, aliquota) {
+  const td = el("td", { textContent: dinheiro(valor) });
+  if (aliquota !== undefined) td.append(el("small", { textContent: `alíq. ${dinheiro(aliquota)}%` }));
+  return td;
+}
+
+function mostrarResultado(corpo) {
+  $("linhas").replaceChildren(...corpo.itens.map((i) => {
+    const aliquotaIbs = Number(i.aliquota_ibs_uf) + Number(i.aliquota_ibs_municipal);
+    return el("tr", {}, el("td", { textContent: i.numero }), celulaValor(i.base_calculo),
+      celulaValor(i.cbs, i.aliquota_cbs), celulaValor(i.ibs, aliquotaIbs), celulaValor(i.imposto_seletivo));
+  }));
+  const t = corpo.totais;
+  $("totais").replaceChildren(el("td", { textContent: "Total" }), el("td"),
+    celulaValor(t.cbs), celulaValor(t.ibs), celulaValor(t.imposto_seletivo));
+  $("memorias").replaceChildren(...corpo.itens.filter((i) => i.memorias.length).map((i) =>
+    el("details", {}, el("summary", { textContent: `Memória de cálculo · item ${i.numero}` }),
+      ...i.memorias.map((m) => el("p", { className: "memoria" }, el("b", { textContent: `${m.tributos}: ` }), m.texto)))));
+  $("vazio").hidden = true;
+  $("resultado").hidden = false;
+}
 
 function mensagemDeErro(corpo) {
   if (corpo && corpo.erro) return corpo.erro;
@@ -141,14 +238,13 @@ function mensagemDeErro(corpo) {
   return "Não foi possível calcular.";
 }
 
-document.getElementById("formulario").onsubmit = async (evento) => {
+$("formulario").onsubmit = async (evento) => {
   evento.preventDefault();
-  const botao = document.getElementById("calcular");
-  const erro = document.getElementById("erro");
-  erro.textContent = "";
+  const botao = $("calcular");
+  $("erro").textContent = "";
   botao.disabled = true;
   try {
-    if (noPages) guardar("api", campoApi.value.trim());
+    if (noPages) guardar("api", $("api").value.trim());
     const resposta = await fetch(`${baseApi()}/api/calculos/regime-regular`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -156,18 +252,31 @@ document.getElementById("formulario").onsubmit = async (evento) => {
     });
     const corpo = await resposta.json().catch(() => null);
     if (!resposta.ok) throw new Error(mensagemDeErro(corpo));
-    document.getElementById("linhas").innerHTML = corpo.itens
-      .map((i) => `<tr>${celulas([i.numero, i.base_calculo, i.cbs, i.ibs, i.imposto_seletivo])}</tr>`).join("");
-    const t = corpo.totais;
-    document.getElementById("totais").innerHTML = celulas(["Total", "", t.cbs, t.ibs, t.imposto_seletivo]);
-    document.getElementById("resultado").hidden = false;
+    mostrarResultado(corpo);
   } catch (e) {
-    erro.textContent = e instanceof TypeError ? "Não consegui falar com o servidor do Hub. Confira o endereço e se ele está no ar." : e.message;
-    document.getElementById("resultado").hidden = true;
+    $("erro").textContent = e instanceof TypeError ? "Não consegui falar com o servidor do Hub. Confira o endereço e se ele está no ar." : e.message;
+    $("resultado").hidden = true;
+    $("vazio").hidden = false;
   } finally {
     botao.disabled = false;
   }
 };
+
+// ---------- início ----------
+for (const exemplo of EXEMPLOS) {
+  $("exemplos").append(el("button", { type: "button", textContent: exemplo.nome, onclick: () => aplicarExemplo(exemplo) }));
+}
+$("novo-item").onclick = () => novoItem();
+$("data").value = new Date().toLocaleDateString("sv-SE");
+$("data").onchange = carregarCatalogo;
+if (noPages) {
+  $("servidor").hidden = false;
+  $("api").value = new URLSearchParams(location.search).get("api") || lembrar("api");
+  $("api").required = true;
+  $("api").onchange = carregarCatalogo;
+}
+novoItem();
+carregarCatalogo();
 </script>
 </body>
 </html>

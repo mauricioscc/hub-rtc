@@ -1,6 +1,6 @@
 """API HTTP do Hub (FastAPI). Traduz JSON para o domínio e erros do domínio para HTTP."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Protocol
@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from hub_rtc.dominio.catalogo import SituacaoTributaria
 from hub_rtc.dominio.erros import ErroDoHub, MotorIndisponivel
 from hub_rtc.dominio.operacao import ItemOperacao, Operacao
 from hub_rtc.dominio.resultado import ResultadoCalculo
@@ -22,6 +23,10 @@ STATUS_INDISPONIVEL = 503
 
 class CasoDeUsoCalcular(Protocol):
     def executar(self, operacao: Operacao) -> ResultadoCalculo: ...
+
+
+class ConsultaSituacoes(Protocol):
+    def executar(self, data: date) -> tuple[SituacaoTributaria, ...]: ...
 
 
 class ItemPedido(BaseModel):
@@ -49,6 +54,11 @@ class PedidoCalculo(BaseModel):
         )
 
 
+class MemoriaResposta(BaseModel):
+    tributos: str
+    texto: str
+
+
 class ItemResposta(BaseModel):
     numero: int
     base_calculo: Decimal
@@ -57,6 +67,32 @@ class ItemResposta(BaseModel):
     ibs_uf: Decimal
     ibs_municipal: Decimal
     imposto_seletivo: Decimal
+    aliquota_cbs: Decimal
+    aliquota_ibs_uf: Decimal
+    aliquota_ibs_municipal: Decimal
+    memorias: list[MemoriaResposta]
+
+
+class ClassificacaoResposta(BaseModel):
+    codigo: str
+    descricao: str
+
+
+class SituacaoResposta(BaseModel):
+    codigo: str
+    descricao: str
+    classificacoes: list[ClassificacaoResposta]
+
+    @classmethod
+    def do_dominio(cls, situacao: SituacaoTributaria) -> "SituacaoResposta":
+        return cls(
+            codigo=situacao.codigo,
+            descricao=situacao.descricao,
+            classificacoes=[
+                ClassificacaoResposta(codigo=c.codigo, descricao=c.descricao)
+                for c in situacao.classificacoes
+            ],
+        )
 
 
 class TotaisResposta(BaseModel):
@@ -81,6 +117,13 @@ class RespostaCalculo(BaseModel):
                     ibs_uf=item.ibs_uf,
                     ibs_municipal=item.ibs_municipal,
                     imposto_seletivo=item.imposto_seletivo,
+                    aliquota_cbs=item.aliquota_cbs,
+                    aliquota_ibs_uf=item.aliquota_ibs_uf,
+                    aliquota_ibs_municipal=item.aliquota_ibs_municipal,
+                    memorias=[
+                        MemoriaResposta(tributos=m.tributos, texto=m.texto)
+                        for m in item.memorias_de_calculo
+                    ],
                 )
                 for item in resultado.itens
             ],
@@ -99,7 +142,11 @@ def _responder_erro_do_hub(_: Request, erro: Exception) -> JSONResponse:
     return JSONResponse(status_code=status, content={"erro": str(erro)})
 
 
-def criar_app(caso_de_uso: CasoDeUsoCalcular, origens_permitidas: tuple[str, ...] = ()) -> FastAPI:
+def criar_app(
+    caso_de_uso: CasoDeUsoCalcular,
+    consulta_situacoes: ConsultaSituacoes,
+    origens_permitidas: tuple[str, ...] = (),
+) -> FastAPI:
     app = FastAPI(title="Hub RTC", version="0.1.0")
     if origens_permitidas:
         app.add_middleware(
@@ -118,6 +165,11 @@ def criar_app(caso_de_uso: CasoDeUsoCalcular, origens_permitidas: tuple[str, ...
     def calcular(pedido: PedidoCalculo) -> RespostaCalculo:
         resultado = caso_de_uso.executar(pedido.para_dominio())
         return RespostaCalculo.do_dominio(resultado)
+
+    @app.get("/api/situacoes-tributarias")
+    def situacoes_tributarias(data: date | None = None) -> list[SituacaoResposta]:
+        situacoes = consulta_situacoes.executar(data or date.today())
+        return [SituacaoResposta.do_dominio(s) for s in situacoes]
 
     # Por último: as rotas /api têm prioridade sobre os arquivos da tela.
     app.mount("/", StaticFiles(directory=DIRETORIO_WEB, html=True), name="web")

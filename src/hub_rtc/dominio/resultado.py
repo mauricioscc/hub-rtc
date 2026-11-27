@@ -5,6 +5,14 @@ from decimal import Decimal
 
 
 @dataclass(frozen=True)
+class MemoriaDeCalculo:
+    """Explicação, em texto, de como o motor chegou ao valor de um ou mais tributos."""
+
+    tributos: str
+    texto: str
+
+
+@dataclass(frozen=True)
 class TributosDoItem:
     numero: int
     base_calculo_ibs_cbs: Decimal
@@ -12,6 +20,11 @@ class TributosDoItem:
     ibs_uf: Decimal
     ibs_municipal: Decimal
     imposto_seletivo: Decimal
+    # Alíquotas efetivas em %, já com eventual redução aplicada.
+    aliquota_cbs: Decimal = Decimal(0)
+    aliquota_ibs_uf: Decimal = Decimal(0)
+    aliquota_ibs_municipal: Decimal = Decimal(0)
+    memorias_de_calculo: tuple[MemoriaDeCalculo, ...] = ()
 
     @property
     def ibs(self) -> Decimal:
