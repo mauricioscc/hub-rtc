@@ -293,3 +293,24 @@ def test_envia_as_aliquotas_nominais_do_imposto_seletivo() -> None:
 
     enviado = json.loads(capturadas[0].content)["itens"][0]["aliquotasNominais"]
     assert enviado["impostoSeletivo"] == {"adValorem": 10.0, "adRem": 0.5}
+
+
+def test_envia_nbs_e_tipo_de_documento_quando_informados() -> None:
+    capturadas: list[httpx.Request] = []
+    motor = motor_respondendo(200, RESPOSTA_DO_MOTOR, capturadas)
+    operacao = replace(uma_operacao((um_item(nbs="109052100"),)), tipo_documento=55)
+
+    motor.calcular(operacao)
+
+    corpo = json.loads(capturadas[0].content)
+    assert corpo["tpDoc"] == 55
+    assert corpo["itens"][0]["nbs"] == "109052100"
+
+
+def test_sem_nbs_o_campo_nao_vai_no_pedido() -> None:
+    capturadas: list[httpx.Request] = []
+    motor = motor_respondendo(200, RESPOSTA_DO_MOTOR, capturadas)
+
+    motor.calcular(uma_operacao((um_item(),)))
+
+    assert "nbs" not in json.loads(capturadas[0].content)["itens"][0]

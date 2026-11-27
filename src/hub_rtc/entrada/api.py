@@ -49,6 +49,7 @@ class ItemPedido(BaseModel):
     classificacao_tributaria: str
     base_calculo: Decimal | None = None
     ncm: str | None = None
+    nbs: str | None = None
     imposto_seletivo: ImpostoSeletivoPedido | None = None
 
     def para_dominio(self) -> ItemOperacao:
@@ -59,6 +60,7 @@ class ItemPedido(BaseModel):
             classificacao_tributaria=self.classificacao_tributaria,
             base_calculo=self.base_calculo,
             ncm=self.ncm,
+            nbs=self.nbs,
             imposto_seletivo=ImpostoSeletivoItem(**seletivo.model_dump()) if seletivo else None,
         )
 

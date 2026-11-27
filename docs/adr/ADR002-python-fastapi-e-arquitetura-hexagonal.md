@@ -11,7 +11,7 @@
 ## Contexto
 
 O Hub precisa orquestrar três motores, padronizar erros e oferecer API e tela web.
-A equipe é um desenvolvedor, que já usa Python (CertiControl), apoiado pelo Claude.
+A equipe é um desenvolvedor que já trabalha com Python, apoiado pelo Claude.
 
 ## Decisão
 

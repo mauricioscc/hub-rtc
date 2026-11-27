@@ -229,3 +229,16 @@ def test_item_sem_seletivo_e_sem_base_vira_422() -> None:
 
     assert resposta.status_code == 422
     assert "base de cálculo" in resposta.json()["erro"]
+
+
+def test_pedido_com_nbs_e_tipo_de_documento_chega_ao_dominio() -> None:
+    caso_de_uso = CasoDeUsoFalso()
+    item = {**PEDIDO["itens"][0], "nbs": "109052100"}
+    pedido = {**PEDIDO, "tipo_documento": 55, "itens": [item]}
+
+    resposta = cliente(caso_de_uso).post("/api/calculos/regime-regular", json=pedido)
+
+    assert resposta.status_code == 200
+    assert caso_de_uso.recebida is not None
+    assert caso_de_uso.recebida.tipo_documento == 55
+    assert caso_de_uso.recebida.itens[0].nbs == "109052100"

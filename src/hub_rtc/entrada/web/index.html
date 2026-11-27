@@ -76,6 +76,13 @@
           <div><label for="data">Data do fato gerador</label><input id="data" type="date" required></div>
           <div><label for="uf">UF</label><input id="uf" maxlength="2" value="RJ" required></div>
           <div><label for="municipio">Município (IBGE)</label><input id="municipio" inputmode="numeric" value="3304557" required></div>
+          <div><label for="tp-doc">Tipo de documento</label>
+            <select id="tp-doc">
+              <option value="">Não informar</option>
+              <option value="55">55 · NF-e</option>
+              <option value="65">65 · NFC-e</option>
+              <option value="57">57 · CT-e</option>
+            </select></div>
         </div>
       </section>
 
@@ -198,6 +205,7 @@ function novoItem({ cst = "", classificacao = "", base = "", seletivo = null } =
   const selClass = el("select", { className: "classificacao", required: true });
   const campoBase = el("input", { className: "base", inputMode: "decimal", placeholder: "100.00", value: base });
   const ncm = el("input", { className: "ncm", maxLength: 8 });
+  const nbs = el("input", { className: "nbs", maxLength: 9, inputMode: "numeric", placeholder: "109052100" });
   const remover = el("button", { type: "button", className: "remover", title: "Remover item", textContent: "×" });
   const campo = (rotulo, controle, classe = "") => el("div", { className: classe }, el("label", { textContent: rotulo }), controle);
   const campoIs = (classe, rotulo, valor, extra = {}) => campo(rotulo, el("input", { className: classe, value: valor, ...extra }));
@@ -213,7 +221,7 @@ function novoItem({ cst = "", classificacao = "", base = "", seletivo = null } =
   const item = el("div", { className: "item" },
     campo("Nº", numero), campo("Situação tributária (CST)", selCst, "cst-campo"),
     campo("Classificação tributária", selClass, "larga"),
-    campo("Base de cálculo (R$)", campoBase, "base-campo"), campo("NCM (opcional)", ncm), blocoIs, remover);
+    campo("Base de cálculo (R$)", campoBase, "base-campo"), campo("NCM (opcional)", ncm), campo("NBS (opcional, 9 dígitos, para serviços)", nbs, "larga"), blocoIs, remover);
   const exigirBase = () => { campoBase.required = !usaSeletivo(item); atualizarAliquotas(); };
   blocoIs.oninput = exigirBase;
   exigirBase();
@@ -246,6 +254,8 @@ function montarPedido() {
     if (usaSeletivo(l)) item.imposto_seletivo = lerSeletivo(l);
     const ncm = l.querySelector(".ncm").value.trim();
     if (ncm) item.ncm = ncm;
+    const nbs = l.querySelector(".nbs").value.trim();
+    if (nbs) item.nbs = nbs;
     return item;
   });
   const pedido = {
@@ -254,6 +264,7 @@ function montarPedido() {
     municipio: Number(String($("municipio").value).trim()),
     itens,
   };
+  if ($("tp-doc").value) pedido.tipo_documento = Number($("tp-doc").value);
   if (exigeAliquotas()) {
     const lerAliquota = (id) => $(id).value.trim().replace(",", ".");
     pedido.aliquotas_nominais = { cbs: lerAliquota("aliq-cbs"), ibs_estadual: lerAliquota("aliq-ibs-uf"), ibs_municipal: lerAliquota("aliq-ibs-mun") };

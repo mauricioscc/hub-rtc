@@ -26,6 +26,9 @@ oficial, por API e por tela web:
   municipal) e avisa que o cálculo é uma simulação com os valores informados.
 - Imposto Seletivo por item (ad valorem e ad rem), a partir de 2027: com ele, o motor calcula a
   base de CBS e IBS (base do IS + imposto) e a tela deixa de pedir essa base.
+- NBS por item (serviços) e tipo de documento (NF-e, NFC-e, CT-e) opcionais. Com tipo de documento,
+  o motor confere se NCM ou NBS são permitidos para a classificação (ex.: NF-e com a classificação
+  000001 não aceita NBS) e a tela mostra a mensagem dele.
 - Erros do motor traduzidos: 422 para recusa (ex.: CST inexistente), 503 para motor fora do ar.
 
 ### API do Hub
@@ -46,15 +49,15 @@ como texto, para não perder casas decimais.
 | 0 | Motores oficiais no Docker | Pronta |
 | 1 | Cálculo do Regime Regular (API e tela) | Pronta |
 | 2 | Publicação: repositório público, CI, tela no Pages, Hub via Tailscale Funnel | Pronta |
-| 3 | Completar o Regime Regular: alíquotas nominais (2027+), Imposto Seletivo, NBS, tipo de documento, exportação | Em andamento (alíquotas nominais e Imposto Seletivo prontos) |
+| 3 | Completar o Regime Regular: alíquotas nominais (2027+), Imposto Seletivo, NBS, tipo de documento, exportação | Em andamento (só falta a exportação) |
 | 4 | Simples Nacional | Planejada |
 | 5 | Gerador de DANFSe | Planejada |
 | 6 | Produção: servidor da empresa, HTTPS, acesso controlado, monitoramento | Planejada |
 
 ### Limitações conhecidas
 
-- A tela não tem campos de NBS nem de tipo de documento (NF-e, NFS-e). O CST e a classificação do
-  Imposto Seletivo são digitados (padrão 000 / 000001), sem lista de seleção.
+- O tipo de documento da tela lista só NF-e, NFC-e e CT-e (NFS-e e outros ficam para depois). O CST e a
+  classificação do Imposto Seletivo são digitados (padrão 000 / 000001), sem lista de seleção.
 - Só foram testados tributação integral, reduções, isenção e imunidade. Crédito presumido,
   monofasia, diferimento e compra governamental não foram exercitados.
 - O Hub público não tem login nem limite de uso.

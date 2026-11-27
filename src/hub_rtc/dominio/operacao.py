@@ -10,6 +10,7 @@ from hub_rtc.dominio.erros import OperacaoInvalida
 TAMANHO_CST = 3
 TAMANHO_CLASSIFICACAO = 6
 TAMANHO_UF = 2
+TAMANHO_NBS = 9
 ALIQUOTA_MAXIMA = Decimal(100)
 
 
@@ -84,6 +85,7 @@ class ItemOperacao:
     base_calculo: Decimal | None
     ncm: str | None = None
     imposto_seletivo: ImpostoSeletivoItem | None = None
+    nbs: str | None = None
 
     def __post_init__(self) -> None:
         if self.numero < 1:
@@ -92,6 +94,8 @@ class ItemOperacao:
         _exigir_digitos(
             self.classificacao_tributaria, TAMANHO_CLASSIFICACAO, "classificação tributária"
         )
+        if self.nbs is not None:
+            _exigir_digitos(self.nbs, TAMANHO_NBS, "NBS")
         if self.base_calculo is None and self.imposto_seletivo is None:
             raise OperacaoInvalida("base de cálculo é obrigatória sem Imposto Seletivo")
         if self.base_calculo is not None and self.base_calculo < 0:

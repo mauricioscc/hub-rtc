@@ -71,6 +71,8 @@ def _item_para_json(item: ItemOperacao) -> dict[str, Any]:
         json_item["baseCalculo"] = float(item.base_calculo)
     if item.ncm:
         json_item["ncm"] = item.ncm
+    if item.nbs:
+        json_item["nbs"] = item.nbs
     if item.imposto_seletivo is not None:
         json_item["impostoSeletivo"] = _seletivo_para_json(item.imposto_seletivo)
     return json_item

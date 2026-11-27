@@ -156,3 +156,14 @@ def test_aliquotas_nominais_podem_trazer_as_do_imposto_seletivo() -> None:
     aliquotas = AliquotasNominais(Decimal(1), Decimal(1), Decimal(1), imposto_seletivo=seletivo)
 
     assert aliquotas.imposto_seletivo is seletivo
+
+
+def test_nbs_valido_e_aceito_e_e_opcional() -> None:
+    assert um_item(nbs="109052100").nbs == "109052100"
+    assert um_item().nbs is None
+
+
+@pytest.mark.parametrize("nbs", ["10905210", "1090521000", "abc052100"])
+def test_nbs_precisa_ter_nove_digitos(nbs: str) -> None:
+    with pytest.raises(OperacaoInvalida, match="NBS"):
+        um_item(nbs=nbs)

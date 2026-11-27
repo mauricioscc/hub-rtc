@@ -146,3 +146,37 @@ def test_hub_calcula_o_imposto_seletivo_com_o_motor_real() -> None:
     assert corpo["totais"]["imposto_seletivo"] == "19.30"
     assert corpo["itens"][0]["base_calculo"] == "207.30"
     assert "Imposto Seletivo" in [m["tributos"] for m in corpo["itens"][0]["memorias"]]
+
+
+def test_hub_envia_nbs_e_tipo_de_documento_e_repassa_as_regras_do_motor() -> None:
+    item = {
+        "numero": 1,
+        "cst": "000",
+        "classificacao_tributaria": "000001",
+        "base_calculo": "100.00",
+    }
+    pedido = {
+        "fato_gerador": "2026-10-20T10:00:00-03:00",
+        "municipio": 3304557,
+        "uf": "RJ",
+        "itens": [item],
+    }
+    url = f"{ENDERECOS.hub}/api/calculos/regime-regular"
+
+    def calcular(**alteracoes: object) -> httpx.Response:
+        corpo = {**pedido, **alteracoes}
+        return httpx.post(url, json=corpo, timeout=TEMPO_LIMITE_SEGUNDOS)
+
+    com_nbs = [{**item, "nbs": "109052100"}]
+    com_ncm = [{**item, "ncm": "84713012"}]
+
+    assert calcular(itens=com_nbs).status_code == httpx.codes.OK
+    nfe_com_ncm = calcular(tipo_documento=55, itens=com_ncm)
+    assert nfe_com_ncm.status_code == httpx.codes.OK, nfe_com_ncm.text
+    assert nfe_com_ncm.json()["totais"]["cbs"] == "0.90"
+    nfe_com_nbs = calcular(tipo_documento=55, itens=com_nbs)
+    assert nfe_com_nbs.status_code == httpx.codes.UNPROCESSABLE_ENTITY
+    assert "NBS não permitida" in nfe_com_nbs.json()["erro"]
+    desconhecido = calcular(tipo_documento=99)
+    assert desconhecido.status_code == httpx.codes.UNPROCESSABLE_ENTITY
+    assert "tpDoc" in desconhecido.json()["erro"]
