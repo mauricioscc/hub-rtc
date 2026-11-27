@@ -12,12 +12,50 @@ Federal para a Reforma Tributária do Consumo (CBS, IBS e Imposto Seletivo, LC 2
 > Os resultados são simulações feitas com os motores oficiais. Não substituem a
 > emissão nem a autorização de documentos fiscais.
 
-## Estado atual: Fase 1 (cálculo do Regime Regular)
+## O que funciona hoje
 
-O Hub calcula CBS, IBS e Imposto Seletivo pelo motor Regime Regular, por API
-(`POST /api/calculos/regime-regular`) e por uma tela web. Simples Nacional e
-DANFSe chegam nas próximas fases. Ainda não há `aliquotasNominais` (o motor as
-exige para fatos geradores a partir de 01/01/2027).
+**Cálculo do Regime Regular** (CBS, IBS estadual e municipal, Imposto Seletivo) pelo motor
+oficial, por API e por tela web:
+
+- Listas de seleção de CST e classificação tributária, vindas do motor para a data informada.
+- Resultado por item e em total, com a alíquota efetiva (já com a redução) e a memória de
+  cálculo do motor.
+- Exemplos prontos: tributação integral, medicamento (redução de 60%), bares e restaurantes
+  (40%), isenção, imunidade, obras e bens imóveis (50%), oficina automotiva e vários itens.
+- Erros do motor traduzidos: 422 para recusa (ex.: CST inexistente), 503 para motor fora do ar.
+
+### API do Hub
+
+| Rota | O que faz |
+| --- | --- |
+| `POST /api/calculos/regime-regular` | Calcula os tributos de uma operação |
+| `GET /api/situacoes-tributarias?data=AAAA-MM-DD` | Lista CSTs e classificações vigentes na data |
+| `GET /api/saude` | Confere se o Hub está no ar |
+
+A documentação interativa fica em `/docs` do Hub. Valores monetários e alíquotas saem
+como texto, para não perder casas decimais.
+
+### Roteiro
+
+| Fase | Conteúdo | Situação |
+| --- | --- | --- |
+| 0 | Motores oficiais no Docker | Pronta |
+| 1 | Cálculo do Regime Regular (API e tela) | Pronta |
+| 2 | Publicação: repositório público, CI, tela no Pages, Hub via Tailscale Funnel | Pronta |
+| 3 | Completar o Regime Regular: alíquotas nominais (2027+), NBS, tipo de documento, Imposto Seletivo, exportação | Planejada |
+| 4 | Simples Nacional | Planejada |
+| 5 | Gerador de DANFSe | Planejada |
+| 6 | Produção: servidor da empresa, HTTPS, acesso controlado, monitoramento | Planejada |
+
+### Limitações conhecidas
+
+- **Fatos geradores a partir de 01/01/2027 não funcionam:** o motor exige `aliquotasNominais`
+  nesse caso e o Hub ainda não envia o campo.
+- A tela não tem campos de NBS, tipo de documento (NF-e, NFS-e) nem Imposto Seletivo.
+- Só foram testados tributação integral, reduções, isenção e imunidade. Crédito presumido,
+  monofasia, diferimento e compra governamental não foram exercitados.
+- O Hub público não tem login nem limite de uso.
+- Os motores Simples Nacional e DANFSe sobem e respondem, mas o Hub ainda não os usa.
 
 ## Subir o Hub e os motores
 
@@ -86,7 +124,7 @@ src/hub_rtc/
   dominio/        entidades e regras, sem I/O
   portas/         interfaces (Protocol) que os casos de uso exigem
   casos_de_uso/   um caso de uso por arquivo
-  adaptadores/    clientes HTTP dos três motores
+  adaptadores/    cliente HTTP do motor (hoje só o Regime Regular)
   entrada/        rotas FastAPI e tela web
   composicao.py   único ponto que liga portas a adaptadores
 ```
