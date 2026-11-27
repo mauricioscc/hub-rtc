@@ -56,6 +56,10 @@ Endereço atual dos testes: tela em <https://mauricioscc.github.io/hub-rtc/>, Hu
 `https://office-mscx.tailbf5033.ts.net`, publicado pelo Tailscale Funnel a partir do PC
 do desenvolvedor (`tailscale funnel --bg 8000`; para desligar: `tailscale funnel --https=443 off`).
 O Hub só responde enquanto esse PC e o Docker estiverem ligados.
+Atenção: em computadores que fazem parte da rede Tailscale do desenvolvedor, o nome do Hub
+resolve para um IP da rede privada e o navegador bloqueia a chamada vinda do Pages
+(`LocalNetworkAccessPermissionDenied`). Nesses computadores use <http://localhost:8000>.
+Quem está fora dessa rede (o caso do funcionário) não é afetado.
 
 Sem Pages, basta abrir o endereço do próprio Hub: ele serve a mesma tela.
 
